@@ -106,7 +106,7 @@ function gain(p) {
 }
 function kick(p, tx, ty, speed, err, kind, vz = 0) {
   const B = M.ball, a = Math.atan2(ty - B.y, tx - B.x) + err;
-  B.vx = Math.cos(a) * speed; B.vy = Math.sin(a) * speed; B.vz = vz; B.z = B.z || 0; B.hd = false;
+  B.vx = Math.cos(a) * speed; B.vy = Math.sin(a) * speed; B.vz = vz; B.z = B.z || 0; B.hd = false; p.kickT = 0.28;
   sndKick(Math.min(1, speed / 34));
   B.owner = null; B.lastSide = p.side; B.lastP = p; B.kicker = p; B.kind = kind; B.gkDone = false; B.target = null; B.wallChk = false; B.fkShot = null;
   p.cool = 0.35;
@@ -324,7 +324,7 @@ function headers(B) {
     const d = dist(p, B); if (d < bd) { bd = d; best = p; }
   }
   if (!best) return;
-  B.hd = true;
+  B.hd = true; best.jumpT = 0.45;
   const p = best, gx = goalX(p.side), ogx = goalX(other(p.side)), dg = Math.hypot(gx - p.x, PW / 2 - p.y);
   if (dg < 18 && rnd() < 0.85) {
     const ty = PW / 2 + (rnd() - 0.5) * 6;
@@ -595,7 +595,7 @@ function arcStep(dt) {
     if (M.half === 1) { M.half = 2; M.clock = 0; M.paused = true; M.needKick = 'away'; clearInput(); matchLog('⏸️ Final del primer tiempo.', 'info'); return halftime(); }
     return endMatch();
   }
-  for (const p of M.all) { p.cool -= dt; p.stun -= dt; p.protect -= dt; if (p.dive > 0) p.dive -= dt; }
+  for (const p of M.all) { p.cool -= dt; p.stun -= dt; p.protect -= dt; if (p.dive > 0) p.dive -= dt; if (p.kickT > 0) p.kickT -= dt; if (p.jumpT > 0) p.jumpT -= dt; }
   if (M.banner && (M.banner.t -= dt) <= 0) M.banner = null;
   for (const p of M.all) if (p.pose) { p.pose.t += dt; if (p.pose.dur && p.pose.t > p.pose.dur) p.pose = null; }
   if (M.bubbles) M.bubbles = M.bubbles.filter(b => (b.t -= dt) > 0);
@@ -781,10 +781,10 @@ function look(p) {
     const f = r('fc');
     const face = f < (y < 1995 ? 0.25 : 0.04) ? 'mustache' : f < (y < 1995 ? 0.32 : 0.04) + (y >= 2006 ? 0.3 : 0.08) ? 'beard' : f > 0.95 ? 'goatee' : 'none';
     const L = {
-      id: p.id, skin: SKINS[h % SKINS.length], hair: HAIRS[(h >> 4) % HAIRS.length], style, face,
-      boot: BOOTS[(h >> 17) % BOOTS.length], band: r('bd') < 0.06 ? ['#f8fafc', '#111827', '#ef4444'][(h >> 3) % 3] : null,
+      id: p.id, skin: SKINS[h % SKINS.length], hair: HAIRS[(h >>> 4) % HAIRS.length], style, face,
+      boot: BOOTS[(h >>> 17) % BOOTS.length], band: r('bd') < 0.06 ? ['#f8fafc', '#111827', '#ef4444'][(h >>> 3) % 3] : null,
       H: 0.93 + r('h') * 0.13 + (p.gk || p.slot === 'DFC' ? 0.04 : 0), W: 0.9 + r('w') * 0.22,
-      cel: CELEBS[(h >> 7) % CELEBS.length], sleeves: r('sl') < 0.25,
+      cel: CELEBS[(h >>> 7) % CELEBS.length], sleeves: r('sl') < 0.25,
       num: p.gk ? 1 : [2, 3, 4, 5, 6, 8, 7, 10, 11, 9, 14, 15, 16, 17, 18, 19, 20][p.i % 17],
     };
     Object.assign(L, ICONS[p.id] || {});
@@ -1103,13 +1103,18 @@ function arcDraw() {
     const L = look(p), col = M[p.side].col;
     const shirt = p.gk ? (L.gkShirt || (p.side === 'home' ? '#111827' : '#a3e635')) : col;
     const shorts = p.gk ? '#111827' : (lum(col) > 0.75 ? '#1f2937' : (lum(col) < 0.2 ? '#f8fafc' : shade(col, 0.55)));
-    const socks = p.gk ? '#111827' : shirt, trim = lum(shirt) > 0.6 ? '#111827' : '#f8fafc', OUT = 'rgba(0,0,0,.55)';
-    const pose = p.pose && p.pose.type;
-    // paso al correr
+    const socks = p.gk ? '#111827' : shirt, trim = lum(shirt) > 0.6 ? '#111827' : '#f8fafc', OUT = 'rgba(0,0,0,.5)';
+    const pose = p.pose && p.pose.type, B = M.ball;
+    // ----- movimiento: cuánto corre y hacia dónde mira -----
     const mv = p.lx == null ? 0 : Math.hypot(p.x - p.lx, p.y - p.ly); p.lx = p.x; p.ly = p.y;
-    p.ph = (p.ph || 0) + mv * 1.9;
-    const run = Math.min(1, mv * 25), sw = Math.sin(p.ph) * 0.45 * run, face = p.fx < 0 ? -1 : 1;
-    const bob = Math.abs(Math.sin(p.ph)) * k * 0.05 * run;
+    const runT = Math.min(1, mv * 22); p.run = (p.run || 0) + (runT - (p.run || 0)) * 0.25;
+    const run = p.run; p.ph = (p.ph || 0) + mv * 2.1 + (run < 0.05 ? 0 : 0);
+    const face = p.fx < 0 ? -1 : 1, side = Math.min(1, Math.abs(p.fx) * 1.25);
+    const view = side > 0.55 ? 'side' : (p.fy > 0 ? 'front' : 'back');
+    const breathe = run < 0.1 ? Math.sin(T * 2.4 + p.i) * k * 0.012 : 0;
+    const bob = Math.abs(Math.sin(p.ph)) * k * 0.06 * run;
+    // arquero atento: rodillas flexionadas y brazos listos cuando la pelota está cerca
+    const gkReady = p.gk && !pose && !(p.dive > 0) && B.owner !== p && Math.abs(B.x - (p.side === 'home' ? 0 : PL)) < 32;
     if (p === M.ctrl || p === M.ctrl2) {
       const rc = p === M.ctrl ? '#facc15' : '#22d3ee', pulse = 1 + Math.sin(T * 6) * 0.06;
       c.beginPath(); c.ellipse(x, y, k * 0.75 * pulse, k * 0.27 * pulse, 0, 0, 7);
@@ -1127,40 +1132,66 @@ function arcDraw() {
     } else if (p.dive > 0) {                               // el arquero se tira
       const yy = y - k * 0.4; c.translate(x, yy); c.rotate((p.diveDir || 1) * 1.25 * Math.min(1, (0.7 - p.dive) * 6 + 0.2)); c.translate(-x, -yy);
     } else if (p.stun > 0) { c.translate(x, y); c.rotate(face * -0.35); c.translate(-x, -y); }   // trastabilla después de un quite
-    // festejos que mueven todo el cuerpo
     const pt = p.pose ? p.pose.t : 0;
     if (pose === 'siu' && pt < 0.6) c.translate(0, -Math.sin(pt / 0.6 * Math.PI) * k * 0.7);
     if (pose === 'dance') { c.translate(x, y); c.rotate(Math.sin(T * 9) * 0.18); c.translate(-x, -y); }
     if (pose === 'baby') { c.translate(x, y); c.rotate(Math.sin(T * 6) * 0.08); c.translate(-x, -y); }
+    if (p.jumpT > 0) c.translate(0, -Math.sin((p.jumpT / 0.45) * Math.PI) * k * 0.45);   // salto para cabecear
     const kneel = pose === 'knees';
     if (kneel) c.translate(0, k * 0.42);
     // altura y contextura de cada uno
     c.translate(x, y); c.scale(L.W, L.H); c.translate(-x, -y);
-    c.translate(0, -bob);
-    const hip = y - k * 0.9, shY = y - k * 1.5, lw = Math.max(1.6, k * 0.17);
-    c.lineCap = 'round';
-    const limb = (pts, color, wd) => { c.strokeStyle = OUT; c.lineWidth = wd + 1.4; line(pts); c.strokeStyle = color; c.lineWidth = wd; line(pts); };
-    if (kneel) {                                           // de rodillas en el pasto
-      for (const s2 of [1, -1]) {
-        limb([[x + s2 * k * 0.1, hip + k * 0.15], [x + s2 * k * 0.12 + face * k * 0.15, y - k * 0.42]], L.skin, lw);
-        limb([[x + s2 * k * 0.12 + face * k * 0.15, y - k * 0.42], [x + s2 * k * 0.1 - face * k * 0.3, y - k * 0.4]], socks, lw);
-      }
-    } else for (const s2 of [1, -1]) {                     // piernas (la de atrás un poco más oscura)
-      const a2 = pose ? 0 : sw * s2, fx = x + Math.sin(a2) * k * 0.55 * face + s2 * k * 0.06, fy = y + bob - Math.max(0, Math.sin(a2)) * k * 0.12;
-      const kx = x + s2 * k * 0.08 + Math.sin(a2) * k * 0.32 * face, ky = hip + k * 0.45;
-      const dk = s2 > 0 ? 0.8 : 1;
-      limb([[x + s2 * k * 0.1, hip + k * 0.15], [kx, ky]], shade(L.skin, dk), lw);
-      limb([[kx, ky], [fx, fy - k * 0.05]], shade(socks, dk), lw);
-      c.strokeStyle = trim; c.lineWidth = lw * 0.9; line([[kx + (fx - kx) * 0.15, ky + (fy - ky) * 0.15], [kx + (fx - kx) * 0.25, ky + (fy - ky) * 0.25]]);
-      limb([[fx, fy - k * 0.03], [fx + face * k * 0.13, fy - k * 0.02]], L.boot, lw * 1.05);
-    }
-    // short
-    c.fillStyle = shorts; c.strokeStyle = OUT; c.lineWidth = 1;
-    c.beginPath(); c.roundRect(x - k * 0.24, hip - k * 0.05, k * 0.48, k * 0.3, k * 0.06); c.fill(); c.stroke();
-    const hr = k * 0.17, hy = shY - k * 0.19;
-    // brazos: normales o en pose de festejo / reacción
-    const armPts = s2 => {
-      const sx = x + s2 * k * 0.22, sy = shY + k * 0.06, F = s2 === face, wv = Math.sin(T * 10) * k * 0.08;
+    c.translate(0, -bob + breathe);
+    c.lineJoin = 'round'; c.lineCap = 'round';
+
+    // ----- piezas: cápsulas que se afinan (muslos, gemelos, brazos) -----
+    const cap = (a, b, r1, r2, fill, edge = true) => {
+      const dx = b[0] - a[0], dy = b[1] - a[1], ln = Math.hypot(dx, dy) || 0.001, nx = -dy / ln, ny = dx / ln, an = Math.atan2(dy, dx);
+      c.beginPath(); c.moveTo(a[0] + nx * r1, a[1] + ny * r1); c.lineTo(b[0] + nx * r2, b[1] + ny * r2);
+      c.arc(b[0], b[1], r2, an + Math.PI / 2, an - Math.PI / 2, true); c.lineTo(a[0] - nx * r1, a[1] - ny * r1);
+      c.arc(a[0], a[1], r1, an - Math.PI / 2, an + Math.PI / 2, true); c.closePath();
+      c.fillStyle = fill; c.fill(); if (edge) { c.strokeStyle = OUT; c.lineWidth = 0.7; c.stroke(); }
+    };
+    const lerp = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+    const crouch = gkReady ? 0.13 : 0;
+    const hipY = y - k * (0.95 - crouch), thighL = k * 0.47, shinL = k * 0.46;
+    const stride = run * (0.35 + 0.65 * side);
+    // ----- piernas -----
+    const legPts = sg => {
+      const lateral = (1 - side) * sg * k * 0.085 + side * sg * k * 0.02;
+      const hp = [x + lateral, hipY];
+      let ta, kb;
+      if (kneel) return { hp, kn: [x + lateral + face * k * 0.18, y - k * 0.42], an: [x + lateral - face * k * 0.25, y - k * 0.4], kneel: true };
+      const ph = p.ph + (sg > 0 ? 0 : Math.PI);
+      ta = Math.sin(ph) * 0.8 * stride; kb = 0.08 + Math.max(0, -Math.cos(ph)) * 1.1 * run;
+      if (p.kickT > 0 && sg > 0) { const u = 1 - p.kickT / 0.28; ta = -0.6 + u * 1.9; kb = u < 0.45 ? 1.3 : 0.15; }   // pierna que patea
+      if (gkReady) { ta = sg * 0.12 * (1 - side) + 0.18; kb = 0.6; }
+      if (pose && !kneel) { ta = sg * 0.06; kb = 0.06; }
+      const kn = [hp[0] + Math.sin(ta) * thighL * face * (0.4 + 0.6 * side) + (1 - side) * sg * k * 0.03, hp[1] + Math.cos(ta) * thighL];
+      const sa = ta - kb;
+      let an = [kn[0] + Math.sin(sa) * shinL * face * (0.4 + 0.6 * side), kn[1] + Math.cos(sa) * shinL];
+      if (an[1] > y) an = [an[0], y];
+      return { hp, kn, an };
+    };
+    const drawLeg = (sg, dark) => {
+      const g = legPts(sg), sk = shade(L.skin, dark), so = shade(socks, dark);
+      cap(g.hp, g.kn, k * 0.105, k * 0.08, sk);                          // muslo
+      cap(g.kn, g.an, k * 0.08, k * 0.05, sk);                           // gemelo
+      cap(lerp(g.kn, g.an, 0.22), g.an, k * 0.085, k * 0.058, so);       // media
+      c.strokeStyle = trim; c.lineWidth = Math.max(1, k * 0.035);        // raya de la media
+      const st = lerp(g.kn, g.an, 0.3); c.beginPath(); c.moveTo(st[0] - k * 0.07, st[1]); c.lineTo(st[0] + k * 0.07, st[1]); c.stroke();
+      const toeDir = g.kneel ? -face : face, toe = [g.an[0] + toeDir * k * (0.06 + 0.12 * side), g.an[1] + k * 0.015];
+      cap([g.an[0] - toeDir * k * 0.03, g.an[1] - k * 0.01], toe, k * 0.06, k * 0.045, shade(L.boot, dark));   // botín
+      cap(lerp(g.hp, g.kn, 0), lerp(g.hp, g.kn, 0.42), k * 0.125, k * 0.112, shade(shorts, dark));          // pierna del short
+    };
+    // ----- torso, brazos y cabeza -----
+    const lean = (run * 0.13 + (p.kickT > 0 ? 0.08 : 0)) * face * side + (gkReady ? 0.18 * face * side : 0);
+    const shX = x + Math.sin(lean) * k * 0.56, shY = hipY - Math.cos(lean) * k * 0.56, sy = shY + k * 0.06;
+    const swd = k * (0.2 + 0.07 * (1 - side)), wwd = k * (0.15 + 0.05 * (1 - side));
+    const hr = k * 0.155, hx = shX + face * side * k * 0.02, hy = shY - k * 0.2;
+    // brazos (codo y mano); las poses de festejo usan las mismas posiciones de antes
+    const poseArm = s2 => {
+      const F = s2 === face, wv = Math.sin(T * 10) * k * 0.08;
       switch (pose) {
         case 'arms_up': case 'knees': return [[x + s2 * k * 0.36, shY - k * 0.2], [x + s2 * k * 0.42 + (s2 > 0 ? wv : -wv), shY - k * 0.6]];
         case 'airplane': return [[x + s2 * k * 0.5, sy + k * 0.02], [x + s2 * k * 0.8, sy + k * 0.08]];
@@ -1173,77 +1204,124 @@ function arcDraw() {
         case 'baby': return [[x + face * k * 0.12 + s2 * k * 0.15, sy + k * 0.3], [x + face * k * 0.32, sy + k * 0.32 + Math.sin(T * 6) * k * 0.06]];
         case 'heart': return [[x + s2 * k * 0.3, sy + k * 0.05], [x + face * k * 0.12 + s2 * k * 0.04, sy + k * 0.12]];
         case 'protest': return [[x + s2 * k * 0.42, sy + k * 0.15], [x + s2 * k * 0.7, sy + k * 0.05]];
-        default: return null;
       }
+      return null;
     };
-    const arm = s2 => {
-      const custom = armPts(s2), sx = x + s2 * k * 0.22, sy = shY + k * 0.06, sleeve = s2 * face < 0 ? shade(shirt, 0.8) : shirt;
-      const hand = p.gk ? '#f8fafc' : L.skin;
-      if (custom) {
-        const [el, hd] = custom, mid = [sx + (el[0] - sx) * 0.55, sy + (el[1] - sy) * 0.55];
-        limb([[sx, sy], L.sleeves || p.gk ? el : mid], sleeve, lw * 1.05);
-        limb([L.sleeves || p.gk ? el : mid, el, hd], hand, lw * 0.9);
-        if (p.gk) { c.fillStyle = '#f8fafc'; c.beginPath(); c.arc(hd[0], hd[1], lw * 0.8, 0, 7); c.fill(); }
-        return;
-      }
-      const a2 = -sw * s2 * 1.2, ex = x + s2 * k * 0.3 + Math.sin(a2) * k * 0.12 * face, ey = shY + k * 0.28;
-      const hx = ex + Math.sin(a2) * k * 0.2 * face + s2 * k * 0.02, hy2 = shY + k * 0.55;
-      limb([[sx, sy], [ex, ey]], sleeve, lw * 1.05);
-      if (L.sleeves || p.gk) limb([[ex, ey], [hx, hy2]], sleeve, lw * 0.95);
-      else limb([[ex, ey], [hx, hy2]], hand, lw * 0.9);
-      if (p.gk) { c.fillStyle = '#f8fafc'; c.beginPath(); c.arc(hx, hy2, lw * 0.75, 0, 7); c.fill(); }   // guantes
-      else if (L.sleeves) { c.fillStyle = L.skin; c.beginPath(); c.arc(hx, hy2, lw * 0.45, 0, 7); c.fill(); }
+    const armPts = s2 => {
+      const pa = poseArm(s2); if (pa) return pa;
+      if (gkReady) return [[shX + s2 * k * 0.34 + face * side * k * 0.1, sy + k * 0.18], [shX + s2 * k * 0.42 + face * side * k * 0.24, sy + k * 0.1]];
+      // braceo al correr: opuesto a la pierna del mismo lado
+      const sh = [shX + s2 * swd * (1 - side) * 0.95 + s2 * side * k * 0.02, sy];
+      const aa = -Math.sin(p.ph + (s2 > 0 ? 0 : Math.PI)) * 0.75 * stride, fa = aa + 0.25 + 0.95 * run;
+      const el = [sh[0] + Math.sin(aa) * k * 0.29 * face * (0.4 + 0.6 * side) + (1 - side) * s2 * k * 0.04, sh[1] + Math.cos(aa) * k * 0.29];
+      const hd = [el[0] + Math.sin(fa) * k * 0.26 * face * (0.4 + 0.6 * side) + (1 - side) * s2 * k * 0.02, el[1] + Math.cos(fa) * k * 0.26];
+      return [el, hd];
     };
-    arm(-face);
-    // camiseta con luz y sombra
-    const tg = c.createLinearGradient(x - k * 0.27, shY, x + k * 0.27, shY + k * 0.6);
-    tg.addColorStop(0, shade(shirt, 1.25)); tg.addColorStop(0.55, shirt); tg.addColorStop(1, shade(shirt, 0.7));
-    c.fillStyle = tg; c.beginPath(); c.roundRect(x - k * 0.27, shY - k * 0.02, k * 0.54, k * 0.62, [k * 0.13, k * 0.13, k * 0.06, k * 0.06]); c.fill();
-    c.strokeStyle = OUT; c.lineWidth = 1; c.stroke();
-    c.strokeStyle = trim; c.lineWidth = Math.max(1, k * 0.05);   // cuello
-    c.beginPath(); c.moveTo(x - k * 0.08, shY); c.lineTo(x, shY + k * 0.08); c.lineTo(x + k * 0.08, shY); c.stroke();
-    if (k > 13) {
-      c.fillStyle = trim;
-      c.font = `800 ${Math.round(k * 0.32)}px Oswald, Inter, sans-serif`; c.textAlign = 'center'; c.textBaseline = 'middle';
-      c.fillText(L.num, x, shY + k * 0.33);
+    const drawArm = (s2, dark) => {
+      const [el, hd] = armPts(s2), sh = [shX + s2 * swd * (1 - side) * 0.95 + s2 * side * k * 0.02, sy];
+      const skin = shade(L.skin, dark), sl = shade(shirt, dark);
+      cap(sh, el, k * 0.068, k * 0.058, L.sleeves || p.gk ? sl : skin);
+      cap(el, hd, k * 0.056, k * 0.045, L.sleeves || p.gk ? sl : skin);
+      if (!(L.sleeves || p.gk)) cap(sh, lerp(sh, el, 0.5), k * 0.085, k * 0.078, sl);       // manga corta
+      c.fillStyle = p.gk ? '#f8fafc' : skin; c.beginPath(); c.arc(hd[0], hd[1], k * (p.gk ? 0.075 : 0.05), 0, 7); c.fill();   // mano / guante
+      if (p.gk) { c.strokeStyle = OUT; c.lineWidth = 0.7; c.stroke(); }
+    };
+    const back = view === 'side' ? -face : -1, front = -back;
+    // orden: lo de atrás primero
+    if (view === 'side') drawArm(back, 0.82);
+    drawLeg(-1, 0.84); drawLeg(1, 1);
+    // short
+    c.fillStyle = shorts; c.beginPath();
+    c.moveTo(x - wwd * 1.02, hipY - k * 0.08); c.lineTo(x + wwd * 1.02, hipY - k * 0.08);
+    c.lineTo(x + wwd * 1.12, hipY + k * 0.1); c.lineTo(x - wwd * 1.12, hipY + k * 0.1); c.closePath(); c.fill();
+    c.strokeStyle = OUT; c.lineWidth = 0.7; c.stroke();
+    // camiseta: hombros anchos, cintura más fina, con luz de costado
+    const tg = c.createLinearGradient(shX - swd, shY, shX + swd, hipY);
+    tg.addColorStop(0, shade(shirt, 1.22)); tg.addColorStop(0.55, shirt); tg.addColorStop(1, shade(shirt, 0.72));
+    c.fillStyle = tg; c.beginPath();
+    c.moveTo(shX - swd, shY + k * 0.04);
+    c.quadraticCurveTo(shX - swd * 0.6, shY - k * 0.045, shX, shY - k * 0.035);
+    c.quadraticCurveTo(shX + swd * 0.6, shY - k * 0.045, shX + swd, shY + k * 0.04);
+    c.quadraticCurveTo(x + wwd * 1.15, (shY + hipY) / 2, x + wwd, hipY - k * 0.04);
+    c.lineTo(x - wwd, hipY - k * 0.04);
+    c.quadraticCurveTo(x - wwd * 1.15, (shY + hipY) / 2, shX - swd, shY + k * 0.04);
+    c.closePath(); c.fill(); c.strokeStyle = OUT; c.lineWidth = 0.8; c.stroke();
+    // cuello de la camiseta
+    c.strokeStyle = trim; c.lineWidth = Math.max(1, k * 0.045);
+    if (view === 'back') { c.beginPath(); c.moveTo(shX - k * 0.07, shY - k * 0.025); c.quadraticCurveTo(shX, shY + k * 0.01, shX + k * 0.07, shY - k * 0.025); c.stroke(); }
+    else { c.beginPath(); c.moveTo(shX - k * 0.07 + face * side * k * 0.03, shY - k * 0.03); c.lineTo(shX + face * side * k * 0.04, shY + k * 0.06); c.lineTo(shX + k * 0.07 + face * side * k * 0.03, shY - k * 0.03); c.stroke(); }
+    // número: grande en la espalda (con el apellido), chico adelante
+    if (k > 12) {
+      c.fillStyle = trim; c.textAlign = 'center'; c.textBaseline = 'middle';
+      if (view === 'back') {
+        if (k > 24) { c.font = `800 ${Math.round(k * 0.1)}px Inter, sans-serif`; c.fillText(String(short(p.id)).toUpperCase().slice(0, 10), shX, shY + k * 0.09); }
+        c.font = `800 ${Math.round(k * 0.3)}px Oswald, Inter, sans-serif`; c.fillText(L.num, (shX + x) / 2, shY + k * 0.29);
+      } else if (view === 'front') {
+        c.font = `800 ${Math.round(k * 0.17)}px Oswald, Inter, sans-serif`; c.fillText(L.num, (shX + x) / 2 + k * 0.06, shY + k * 0.17);
+        c.fillStyle = shade(shirt, lum(shirt) > 0.5 ? 0.75 : 1.35); c.beginPath(); c.arc((shX + x) / 2 - k * 0.07, shY + k * 0.15, k * 0.03, 0, 7); c.fill(); // escudo
+      } else { c.font = `800 ${Math.round(k * 0.24)}px Oswald, Inter, sans-serif`; c.fillText(L.num, (shX + x) / 2 - face * k * 0.04, shY + k * 0.27); }
     }
-    arm(face);
+    if (view === 'side') drawArm(front, 1); else { drawArm(-1, 0.92); drawArm(1, 1); }
     // cuello y cabeza
-    const hcol = L.hair, back = x - face * hr * 0.15;
-    if (L.style === 'afro') { c.fillStyle = hcol; c.beginPath(); c.arc(back, hy - hr * 0.3, hr * 1.6, 0, 7); c.fill(); }
-    if (L.style === 'curlylong' || L.style === 'long') { c.fillStyle = hcol; c.beginPath(); c.roundRect(x - face * hr * 1.15 - (face < 0 ? hr * 0.6 : 0), hy - hr * 0.3, hr * 0.62, hr * (L.style === 'long' ? 1.5 : 1.3), hr * 0.25); c.fill(); }
-    c.fillStyle = shade(L.skin, 0.85); c.fillRect(x - k * 0.06, shY - k * 0.08, k * 0.12, k * 0.1);
-    const hg = c.createRadialGradient(x - hr * 0.4, hy - hr * 0.4, hr * 0.1, x, hy, hr);
+    cap([shX, shY + k * 0.02], [hx, hy + hr * 0.7], k * 0.055, k * 0.05, shade(L.skin, 0.88), false);
+    const hcol = L.hair, bdir = view === 'side' ? face : 0;
+    if (L.style === 'afro') { c.fillStyle = hcol; c.beginPath(); c.arc(hx - bdir * hr * 0.15, hy - hr * 0.3, hr * 1.6, 0, 7); c.fill(); }
+    if ((L.style === 'curlylong' || L.style === 'long') && view !== 'front') {
+      c.fillStyle = hcol; c.beginPath();
+      if (view === 'side') c.roundRect(hx - face * hr * 1.15 - (face < 0 ? hr * 0.6 : 0), hy - hr * 0.3, hr * 0.62, hr * (L.style === 'long' ? 1.5 : 1.3), hr * 0.25);
+      else c.roundRect(hx - hr * 1.05, hy - hr * 0.3, hr * 2.1, hr * (L.style === 'long' ? 1.6 : 1.35), hr * 0.3);
+      c.fill();
+    }
+    const hg = c.createRadialGradient(hx - hr * 0.4, hy - hr * 0.4, hr * 0.1, hx, hy, hr);
     hg.addColorStop(0, shade(L.skin, 1.15)); hg.addColorStop(1, shade(L.skin, 0.85));
-    c.fillStyle = hg; c.beginPath(); c.arc(x, hy, hr, 0, 7); c.fill(); c.strokeStyle = OUT; c.lineWidth = 0.8; c.stroke();
-    c.fillStyle = shade(L.skin, 0.9); c.beginPath(); c.arc(x + face * hr * 0.92, hy + hr * 0.1, hr * 0.2, 0, 7); c.fill(); // nariz
-    if (k > 11) { c.fillStyle = '#1b1b1b'; c.beginPath(); c.arc(x + face * hr * 0.5, hy - hr * 0.12, Math.max(0.7, hr * 0.11), 0, 7); c.fill(); } // ojo
-    // barba / bigote
+    c.fillStyle = hg; c.beginPath(); c.ellipse(hx, hy, hr * 0.94, hr, 0, 0, 7); c.fill(); c.strokeStyle = OUT; c.lineWidth = 0.8; c.stroke();
+    // orejas, cara
+    c.fillStyle = shade(L.skin, 0.85);
+    if (view === 'side') { c.beginPath(); c.ellipse(hx - face * hr * 0.15, hy + hr * 0.05, hr * 0.16, hr * 0.22, 0, 0, 7); c.fill(); }
+    else { for (const s2 of [-1, 1]) { c.beginPath(); c.ellipse(hx + s2 * hr * 0.95, hy + hr * 0.05, hr * 0.15, hr * 0.22, 0, 0, 7); c.fill(); } }
+    if (view === 'side') {
+      c.fillStyle = shade(L.skin, 0.9); c.beginPath(); c.arc(hx + face * hr * 0.9, hy + hr * 0.12, hr * 0.18, 0, 7); c.fill();   // nariz
+      if (k > 10) { c.fillStyle = '#1b1b1b'; c.beginPath(); c.arc(hx + face * hr * 0.52, hy - hr * 0.1, Math.max(0.7, hr * 0.1), 0, 7); c.fill(); }
+      if (k > 16) { c.strokeStyle = shade(L.skin, 0.6); c.lineWidth = Math.max(0.6, hr * 0.08); c.beginPath(); c.moveTo(hx + face * hr * 0.55, hy + hr * 0.5); c.lineTo(hx + face * hr * 0.78, hy + hr * 0.48); c.stroke(); }
+    } else if (view === 'front' && k > 10) {
+      c.fillStyle = '#1b1b1b'; for (const s2 of [-1, 1]) { c.beginPath(); c.arc(hx + s2 * hr * 0.36, hy - hr * 0.08, Math.max(0.7, hr * 0.1), 0, 7); c.fill(); }
+      c.fillStyle = shade(L.skin, 0.82); c.beginPath(); c.ellipse(hx, hy + hr * 0.2, hr * 0.12, hr * 0.16, 0, 0, 7); c.fill();   // nariz
+      if (k > 16) { c.strokeStyle = shade(L.skin, 0.6); c.lineWidth = Math.max(0.6, hr * 0.08); c.beginPath(); c.arc(hx, hy + hr * 0.38, hr * 0.25, 0.15 * Math.PI, 0.85 * Math.PI); c.stroke(); }
+    }
+    // barba / bigote (no se ven de espaldas)
     c.fillStyle = hcol;
-    if (L.face === 'beard') { c.globalAlpha = 0.85; c.beginPath(); c.arc(x + face * hr * 0.12, hy + hr * 0.05, hr * 0.98, Math.PI * 0.05, Math.PI * 0.95); c.fill(); c.globalAlpha = 1; }
-    else if (L.face === 'mustache') c.fillRect(x + face * hr * 0.5 - hr * 0.28, hy + hr * 0.32, hr * 0.56, hr * 0.14);
-    else if (L.face === 'goatee') { c.beginPath(); c.arc(x + face * hr * 0.35, hy + hr * 0.82, hr * 0.22, 0, 7); c.fill(); }
+    if (view !== 'back') {
+      const fx2 = hx + (view === 'side' ? face * hr * 0.45 : 0);
+      if (L.face === 'beard') { c.globalAlpha = 0.85; c.beginPath(); c.arc(hx + bdir * hr * 0.12, hy + hr * 0.05, hr * 0.98, Math.PI * 0.05, Math.PI * 0.95); c.fill(); c.globalAlpha = 1; }
+      else if (L.face === 'mustache') c.fillRect(fx2 - hr * 0.28, hy + hr * 0.3, hr * 0.56, hr * 0.13);
+      else if (L.face === 'goatee') { c.beginPath(); c.arc(fx2, hy + hr * 0.82, hr * 0.22, 0, 7); c.fill(); }
+    }
     // pelo
-    const cap = (rr = 1.06, dy = 0.15) => { c.beginPath(); c.arc(x - face * hr * 0.1, hy - hr * dy, hr * rr, Math.PI, Math.PI * 2); c.fill(); };
+    const capHair = (rr = 1.06, dy = 0.15) => {
+      c.beginPath();
+      if (view === 'back') c.arc(hx, hy, hr * (rr - 0.02), 0.32 * Math.PI, 0.68 * Math.PI, true);   // de espaldas: la nuca tapada
+      else c.arc(hx - bdir * hr * 0.1, hy - hr * dy, hr * rr, Math.PI, Math.PI * 2);
+      c.fill();
+    };
     c.fillStyle = hcol;
     switch (L.style) {
-      case 'bald': c.fillStyle = 'rgba(255,255,255,.25)'; c.beginPath(); c.arc(x - hr * 0.3, hy - hr * 0.55, hr * 0.22, 0, 7); c.fill(); break;
-      case 'buzz': c.globalAlpha = 0.75; cap(1.0, 0.1); c.globalAlpha = 1; break;
-      case 'afro': cap(1.12, 0.2); break;
-      case 'mohawk': c.globalAlpha = 0.55; cap(1.0, 0.1); c.globalAlpha = 1; c.beginPath(); c.roundRect(x - hr * 0.2, hy - hr * 1.5, hr * 0.4, hr * 0.75, hr * 0.15); c.fill(); break;
-      case 'curly': case 'curlylong': cap(1.06, 0.15); for (let i = 0; i < 5; i++) { c.beginPath(); c.arc(x - face * hr * 0.1 + (i - 2) * hr * 0.42, hy - hr * 0.95 + Math.abs(i - 2) * hr * 0.18, hr * 0.32, 0, 7); c.fill(); } break;
-      case 'bun': cap(1.04, 0.15); c.beginPath(); c.arc(x - face * hr * 0.55, hy - hr * 1.1, hr * 0.38, 0, 7); c.fill(); break;
-      case 'ponytail': cap(1.04, 0.15); c.beginPath(); c.roundRect(x - face * hr * 1.05 - (face < 0 ? hr * 0.3 : 0), hy - hr * 0.6, hr * 0.3, hr * 1.1, hr * 0.15); c.fill(); break;
-      case 'braids': case 'dreads': cap(1.08, 0.15); c.strokeStyle = hcol; c.lineWidth = Math.max(1, hr * (L.style === 'dreads' ? 0.3 : 0.2));
-        for (let i = 0; i < 4; i++) line([[x - face * hr * (0.2 + i * 0.25), hy - hr * 0.5], [x - face * hr * (0.45 + i * 0.25), hy + hr * (L.style === 'dreads' ? 1.4 : 1.0)]]); break;
-      default: cap(1.06, 0.15);
+      case 'bald': c.fillStyle = 'rgba(255,255,255,.25)'; c.beginPath(); c.arc(hx - hr * 0.3, hy - hr * 0.55, hr * 0.22, 0, 7); c.fill(); break;
+      case 'buzz': c.globalAlpha = 0.75; capHair(1.0, 0.1); c.globalAlpha = 1; break;
+      case 'afro': capHair(1.12, 0.2); break;
+      case 'mohawk': c.globalAlpha = 0.55; capHair(1.0, 0.1); c.globalAlpha = 1; c.beginPath(); c.roundRect(hx - hr * 0.2, hy - hr * 1.5, hr * 0.4, hr * 0.75, hr * 0.15); c.fill(); break;
+      case 'curly': case 'curlylong': capHair(1.06, 0.15); for (let i = 0; i < 5; i++) { c.beginPath(); c.arc(hx - bdir * hr * 0.1 + (i - 2) * hr * 0.42, hy - hr * 0.95 + Math.abs(i - 2) * hr * 0.18, hr * 0.32, 0, 7); c.fill(); } break;
+      case 'bun': capHair(1.04, 0.15); c.beginPath(); c.arc(hx - bdir * hr * 0.55, hy - hr * 1.1, hr * 0.38, 0, 7); c.fill(); break;
+      case 'ponytail': capHair(1.04, 0.15); if (view !== 'front') { c.beginPath(); c.roundRect(hx - bdir * hr * 1.05 - (bdir < 0 ? hr * 0.3 : bdir === 0 ? hr * 0.15 : 0), hy - hr * 0.6, hr * 0.3, hr * 1.1, hr * 0.15); c.fill(); } break;
+      case 'braids': case 'dreads': capHair(1.08, 0.15); c.strokeStyle = hcol; c.lineWidth = Math.max(1, hr * (L.style === 'dreads' ? 0.3 : 0.2));
+        for (let i = 0; i < 4; i++) { const ox = view === 'side' ? -face * hr * (0.2 + i * 0.25) : (i - 1.5) * hr * 0.55; line([[hx + ox, hy - hr * 0.5], [hx + ox * 1.2, hy + hr * (L.style === 'dreads' ? 1.4 : 1.0)]]); } break;
+      default: capHair(1.06, 0.15);
     }
-    if (L.band) { c.fillStyle = L.band; c.fillRect(x - hr * 1.02, hy - hr * 0.55, hr * 2.04, hr * 0.26); }
+    if (L.band) { c.fillStyle = L.band; c.fillRect(hx - hr * 1.02, hy - hr * 0.55, hr * 2.04, hr * 0.26); }
     if (L.helmet) {   // casco protector (como el de Čech)
-      c.fillStyle = '#111827'; c.beginPath(); c.arc(x, hy - hr * 0.05, hr * 1.12, Math.PI * 0.95, Math.PI * 2.05); c.fill();
-      c.strokeStyle = '#111827'; c.lineWidth = Math.max(1, hr * 0.18); line([[x - face * hr * 0.6, hy], [x + face * hr * 0.4, hy + hr * 0.9]]);
+      c.fillStyle = '#111827'; c.beginPath(); c.arc(hx, hy - hr * 0.05, hr * 1.12, Math.PI * 0.95, Math.PI * 2.05); c.fill();
+      c.strokeStyle = '#111827'; c.lineWidth = Math.max(1, hr * 0.18); line([[hx - face * hr * 0.6, hy], [hx + face * hr * 0.4, hy + hr * 0.9]]);
     }
-    if (L.glasses) { c.strokeStyle = '#f97316'; c.lineWidth = Math.max(1, hr * 0.18); line([[x - face * hr * 0.2, hy - hr * 0.15], [x + face * hr * 0.95, hy - hr * 0.15]]); }
+    if (L.glasses && view !== 'back') { c.strokeStyle = '#f97316'; c.lineWidth = Math.max(1, hr * 0.18); line(view === 'side' ? [[hx - face * hr * 0.2, hy - hr * 0.15], [hx + face * hr * 0.95, hy - hr * 0.15]] : [[hx - hr * 0.7, hy - hr * 0.12], [hx + hr * 0.7, hy - hr * 0.12]]); }
     c.restore();
   }
 }
