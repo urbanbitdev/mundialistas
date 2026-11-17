@@ -4,6 +4,6 @@
 // La "anon key" es pública a propósito: la seguridad la ponen las reglas de la base de datos.
 // Si los dejás vacíos, el juego funciona igual pero guarda sólo en el navegador.
 window.MUNDIALISTAS_CONFIG = {
-  supabaseUrl: '',   // ej: 'https://abcdefgh.supabase.co'
-  supabaseKey: '',   // ej: 'eyJhbGciOi...'
+  supabaseUrl: 'https://covnuiadsnqwchxmjqxd.supabase.co',
+  supabaseKey: 'sb_publishable_3vp32bKuj2pW675V04n5KQ_AkiD7wTd',
 };
