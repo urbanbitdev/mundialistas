@@ -105,6 +105,23 @@ const SHORT = (() => {
   return out;
 })();
 const short = n => SHORT[n] || n;
+// Estilo de juego de cada jugador (le da personalidad en los partidos)
+const TRAITS = { gol: ['🎯', 'Goleador'], gam: ['🎩', 'Gambeteador'], cer: ['🧠', 'Cerebro'], vel: ['⚡', 'Veloz'], mur: ['🧱', 'Muralla'], lid: ['💪', 'Incansable'], gk: ['🧤', 'Manos seguras'] };
+// algunos ídolos con su estilo de siempre
+const TRAIT_FIX = { 'Diego Maradona': 'gam', 'Garrincha': 'gam', 'Ronaldinho': 'gam', 'Neymar': 'gam', 'Lionel Messi': 'gam', 'Jay-Jay Okocha': 'gam',
+  'Zinedine Zidane': 'cer', 'Johan Cruyff': 'cer', 'Andrés Iniesta': 'cer', 'Andrea Pirlo': 'cer', 'Luka Modrić': 'cer',
+  'Franz Beckenbauer': 'mur', 'Paolo Maldini': 'mur', 'Franco Baresi': 'mur', 'Lev Yashin': 'gk', 'Petr Čech': 'gk', 'Ronaldo': 'gol', 'Erling Haaland': 'gol' };
+function traitOf(id, o) {
+  const p = DB[id]; if (!p) return null;
+  if (TRAIT_FIX[id]) return TRAIT_FIX[id];
+  const s = stats(id, o == null ? ovr(id) : o);
+  if (p.p === 'POR') return s[3] >= 82 ? 'gk' : null;
+  const opts = [['vel', s[0] - 86], ['gol', s[1] - 84], ['cer', s[2] - 84], ['gam', s[3] - 85], ['mur', s[4] - 82], ['lid', s[5] - 86]].sort((a, b) => b[1] - a[1]);
+  return opts[0][1] >= 0 ? opts[0][0] : null;
+}
+function traitChip(id, o) { const t = traitOf(id, o); return t ? `<div class="pc-trait">${TRAITS[t][0]} ${TRAITS[t][1]}</div>` : ''; }
+// Buscar sin importar tildes ni letras raras (Čech = Cech, Ødegaard = Odegaard)
+const nrm = s => String(s).normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[øØ]/g, 'o').replace(/[łŁ]/g, 'l').replace(/ß/g, 'ss').replace(/[đĐ]/g, 'd').replace(/ı/g, 'i').toLowerCase();
 function chip(c) { const C = COUNTRIES[c]; return `<span class="chip" style="background:${C.c1};color:${lum(C.c1) > 0.6 ? '#111' : '#fff'};border-color:${C.c2}">${C.k}</span>`; }
 function crest(name, color, size = '') {
   const ini = name.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase();
@@ -210,9 +227,9 @@ function renderDraft(name, color, mode = 'new') {
     $('#dr-need').innerHTML = (adding ? '' : DRAFT_NEED.map((n, l) => `<span class="${count(l) >= n ? 'done' : ''}"><i class="bpos l${l}">${['POR', 'DEF', 'MED', 'DEL'][l]}</i><b>${count(l)}/${n}</b></span>`).join('')) +
       `<span class="tot">Elegidos <b>${D.picked.length}/${room}</b></span>`;
     $('#dr-ok').disabled = !ready();
-    const q = D.q.toLowerCase().trim(), [, lo, hi] = OVR_FILTERS[D.of];
+    const q = nrm(D.q.trim()), [, lo, hi] = OVR_FILTERS[D.of];
     const list = pool.filter(p => (D.filter < 0 || LINE[p.p] === D.filter) && p.o >= lo && p.o <= hi &&
-      (!q || p.n.toLowerCase().includes(q) || COUNTRIES[p.c].n.toLowerCase().includes(q) || String(p.y) === q));
+      (!q || nrm(p.n).includes(q) || nrm(COUNTRIES[p.c].n).includes(q) || String(p.y) === q));
     const MAXL = 300;
     $('#dr-list').innerHTML = (list.length > MAXL ? `<p class="mut dr-more">Mostrando ${MAXL} de ${list.length} jugadores. Buscá por nombre, país o año para encontrar más.</p>` : '') + list.slice(0, MAXL).map(p => {
       const on = D.picked.includes(p.id), full = !on && D.picked.length >= room;
@@ -220,7 +237,7 @@ function renderDraft(name, color, mode = 'new') {
       return `<button class="dpick ${on ? 'on' : ''} ${full ? 'full' : ''}" data-id="${esc(p.id)}">
         <span class="bovr ${tier(p.o)}">${p.o}</span>
         <span class="bname">${esc(p.n)}<small>${chip(p.c)} ${COUNTRIES[p.c].n} · Mundial ${p.y}</small>
-          <small class="dstats">${L.map((l, i) => `${l} ${s[i]}`).join(' · ')}</small></span>
+          <small class="dstats">${L.map((l, i) => `${l} ${s[i]}`).join(' · ')}${(t => t ? ` · ${TRAITS[t][0]} ${TRAITS[t][1]}` : '')(traitOf(p.id, p.o))}</small></span>
         <span class="bpos l${LINE[p.p]}">${p.p}</span>
         <span class="check">${on ? '✓' : '+'}</span></button>`;
     }).join('') || '<p class="mut">No hay jugadores con ese filtro.</p>';
@@ -351,6 +368,7 @@ function cardHTML(id, o = ovr(id), extra = '') {
   return `<div class="pcard ${tier(o)}">
     <div class="pc-top"><div class="pc-ovr">${o}<small>${p.p}</small></div><div class="pc-flag">${chip(p.c)}<small>Mundial ${p.y}</small></div></div>
     <div class="pc-name">${esc(p.n)}</div>
+    ${traitChip(id, o)}
     <div class="pc-stats">${L.map((l, i) => `<div class="st"><b>${s[i]}</b><span>${l}</span></div>`).join('')}</div>
     ${extra}</div>`;
 }
@@ -470,8 +488,8 @@ function renderRivals() {
     <div class="dr-filters"><input id="rv-q" placeholder="Buscar país…" value="${esc(RIV_F.q)}" autocomplete="off"></div>
     <div class="rivals" id="rv-list"></div></div>`;
   const paint = () => {
-    const q = RIV_F.q.toLowerCase().trim();
-    const list = RIVALS.map(rivalInfo).filter(r => (!RIV_F.y || r.y === RIV_F.y) && (!q || COUNTRIES[r.c].n.toLowerCase().includes(q)))
+    const q = nrm(RIV_F.q.trim());
+    const list = RIVALS.map(rivalInfo).filter(r => (!RIV_F.y || r.y === RIV_F.y) && (!q || nrm(COUNTRIES[r.c].n).includes(q)))
       .sort((a, b) => a._avg - b._avg);
     $('#rv-list').innerHTML = rivalCards(list) || '<p class="mut">No hay selecciones con ese filtro.</p>';
   };

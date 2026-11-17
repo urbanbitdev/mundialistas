@@ -139,7 +139,7 @@ function readGuest(pr) {
 }
 function snap() {
   const B = M.ball, idx = p => p ? M.all.indexOf(p) : -1, pl = [];
-  for (const p of M.all) pl.push(Math.round(p.x * 10), Math.round(p.y * 10), Math.round(p.fx * 9), Math.round(p.fy * 9), (p.slide > 0 ? 1 : 0) | (p.stun > 0 ? 2 : 0) | (p.wall ? 4 : 0) | (p.dive > 0 ? 8 : 0) | (p.diveDir < 0 ? 16 : 0));
+  for (const p of M.all) pl.push(Math.round(p.x * 10), Math.round(p.y * 10), Math.round(p.fx * 9), Math.round(p.fy * 9), (p.slide > 0 ? 1 : 0) | (p.stun > 0 ? 2 : 0) | (p.wall ? 4 : 0) | (p.dive > 0 ? 8 : 0) | (p.diveDir < 0 ? 16 : 0) | ((Math.max(0, POSES.indexOf(p.pose ? p.pose.type : '')) & 15) << 5));
   return {
     k: ++NET.seq, t: Math.round(M.clock * 10) / 10, h: M.half, m: M.min, s: M.score.slice(), b: [Math.round(B.x * 10), Math.round(B.y * 10), Math.round((B.z || 0) * 10)], bn: M.banner ? [String(M.banner.text).slice(0, 40), M.banner.color] : 0,
     o: idx(B.owner), p: pl, c1: idx(M.ctrl), c2: idx(M.ctrl2), gt: M.goalT > 0 ? Math.round(M.goalT * 10) : 0,
@@ -202,6 +202,7 @@ function guestFrame(dt) {
   }
   if (M.charge > 0) M.charge += dt;
   M.clock += dt;
+  for (const p of M.all) if (p.pose) p.pose.t += dt;
   const a = Math.min(1, dt * 14);
   for (const p of M.all) {
     if (p.tx == null) continue;
@@ -226,6 +227,7 @@ function applySnap(pr) {
     p.tx = clamp(num(S.p[j]) / 10, -2, PL + 2); p.ty = clamp(num(S.p[j + 1]) / 10, -2, PW + 2);
     const fx = num(S.p[j + 2]), fy = num(S.p[j + 3]), m = Math.hypot(fx, fy); if (m) { p.fx = fx / m; p.fy = fy / m; }
     const fl = num(S.p[j + 4]); p.slide = fl & 1 ? 0.3 : 0; p.stun = fl & 2 ? 0.2 : 0; p.wall = !!(fl & 4); if (fl & 8) { if (!(p.dive > 0)) p.dive = 0.7; p.diveDir = fl & 16 ? -1 : 1; } else p.dive = 0;
+    const pi = (fl >> 5) & 15; p.pose = pi && POSES[pi] ? (p.pose && p.pose.type === POSES[pi] ? p.pose : { type: POSES[pi], t: 0 }) : null;
   });
   const B = M.ball, bb = Array.isArray(S.b) ? S.b : [];
   B.tx = clamp(num(bb[0], 525) / 10, -5, PL + 5); B.ty = clamp(num(bb[1], 340) / 10, -5, PW + 5); B.tz = clamp(num(bb[2], 0) / 10, 0, 30);

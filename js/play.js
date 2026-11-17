@@ -50,6 +50,8 @@ function syncP(p) {
   if (DB[id].p === 'POR') { p.rit = s[4]; p.tir = 35; p.pas = s[2]; p.reg = 35; p.def = 35; p.ref = s[3]; p.gkv = s[4]; }
   else { [p.rit, p.tir, p.pas, p.reg, p.def] = s; p.ref = 25; p.gkv = 35; }
   p.spd0 = 6.2 + p.rit * 0.04;
+  p.trait = traitOf(id, pOvr(id, p.side) - penalty(DB[id].p, slot[0]));
+  if (p.trait === 'vel') p.spd0 *= 1.03;
 }
 function speedOf(p) { return p.spd0 * (0.85 + 0.15 * (M[p.side].st[p.id] ?? 100) / 100) * (p.stun > 0 ? 0.35 : 1); }
 function syncAll() {
@@ -161,7 +163,7 @@ function doPass(p, q) {
     return;
   }
   const sp = clamp(9 + 0.62 * d, 12, 31), t = d / (sp * 0.8);
-  const err = gauss() * (0.015 + (100 - p.pas) / 100 * 0.09);
+  const err = gauss() * (0.015 + (100 - p.pas) / 100 * 0.09) * (p.trait === 'cer' ? 0.65 : 1);
   kick(p, q.x + q.vx * t * 0.6, q.y + q.vy * t * 0.6, sp, err, 'pass');
   M.ball.target = q;
   if (!q.gk) setCtrl(p.side, q);
@@ -181,11 +183,13 @@ function tackle(p, ai) {
   if (!o || o.side === p.side) return;
   if (dist(p, o) > (ai ? 1.8 : 2.4) || o.protect > 0) { if (!ai) p.stun = 0.25; return; }
   const ch = ai ? clamp(0.3 + (p.def - o.reg) / 110, 0.1, 0.6) * (p.side === 'away' ? DF().tkc : 1) : clamp(0.5 + DF().myTk + (p.def - o.reg) / 90, 0.25, 0.92);
-  if (rnd() < ch) {
+  if (rnd() < ch - (o.trait === 'gam' ? 0.12 : 0) + (p.trait === 'mur' ? 0.08 : 0)) {
+    if (p.trait === 'mur' && rnd() < 0.25) bubble(p, '¡Acá no pasa nadie!');
     o.stun = 0.5; o.cool = 0.6; gain(p); p.cool = 0;
     if (!ai && rnd() < 0.35) matchLog(`💪 ¡Gran quite de <b>${esc(short(p.id))}</b>!`);
   } else {
     p.stun = ai ? 0.3 : 0.55;
+    if (o.trait === 'gam' && rnd() < 0.35) { matchLog(`🎩 ¡Qué gambeta de <b>${esc(short(o.id))}</b>! Lo dejó pagando a ${esc(short(p.id))}.`); bubble(o, '¡Olé!', 1.2); sndRoar(0.35); }
     if (ai && rnd() < (p.side === 'away' ? 0.22 : 0.08)) foul(p, o);
   }
 }
@@ -231,7 +235,7 @@ function foul(p, victim) {
   p.slide = 0; p.stun = 0.4; victim.stun = 0;
   M.cards = M.cards || {};
   if (!M.cards[p.id] && rnd() < (wasSlide ? 0.45 : 0.22)) {
-    M.cards[p.id] = 1; p.yellow = true;
+    M.cards[p.id] = 1; p.yellow = true; react(p, 'protest', pick(PROTEST_SAY), 1.6);
     setTimeout(() => { if (M && !M.ended) { matchLog(`🟨 Tarjeta amarilla para <b>${esc(short(p.id))}</b>.`, 'card'); banner('🟨 AMARILLA · ' + short(p.id), '#facc15'); } }, 900);
   }
   const pen = inBox(victim.x, victim.y, gx);
@@ -362,12 +366,12 @@ function aiCarry(p, dt, sf) {
   p.dec = 0.22 + rnd() * 0.25;
   const dg = Math.hypot(gx - p.x, PW / 2 - p.y);
   const tm = M.coach && p.side === 'home' ? M.tac.m : 0;
-  if (dg < 25 && rnd() < (dg < 15 ? 0.45 : 0.15) * (p.side === 'away' ? DF().aiShot : 1) * (1 + tm * 0.35)) {
+  if (dg < 25 && rnd() < (dg < 15 ? 0.45 : 0.15) * (p.side === 'away' ? DF().aiShot : 1) * (1 + tm * 0.35) * (p.trait === 'gol' ? 1.4 : 1)) {
     const gk = M.P[other(p.side)].find(q => q.gk);
     return doShoot(p, 0.55 + rnd() * 0.35, (gk && gk.y > PW / 2 ? -1 : 1) * (1.4 + rnd() * 2.3));
   }
-  if (opp.d < 3.5 && rnd() < 0.5) { const q = choosePass(p, 0, 0); if (q) return doPass(p, q); }
-  if (rnd() < 0.08 + tm * 0.04) { const q = choosePass(p, 0, 0, true); if (q && (q.x - p.x) * d > 5) doPass(p, q); }
+  if (opp.d < 3.5 && rnd() < (p.trait === 'gam' ? 0.2 : 0.5)) { const q = choosePass(p, 0, 0); if (q) return doPass(p, q); }
+  if (rnd() < (0.08 + tm * 0.04) * (p.trait === 'cer' ? 2 : 1)) { const q = choosePass(p, 0, 0, true); if (q && (q.x - p.x) * d > 5) doPass(p, q); }
   // centro desde la punta
   if (Math.abs(p.y - PW / 2) > 18 && Math.abs(gx - p.x) < 22 && rnd() < 0.35) { const q = boxMate(p); if (q) return doCross(p, q); }
 }
@@ -386,11 +390,11 @@ function gkMove(p, dt) {
     if (dd < 1.6 + p.ref / 100 * 1.6) {
       B.gkDone = true;
       const tir = B.kind === 'shot' && B.kicker ? B.kicker.tir : 50;
-      const ch = clamp(0.72 + (p.ref - 70) / 50 - (bs - 24) / 30 - (tir - 70) / 160 + (dd < 1.2 ? 0.15 : 0) + (p.side === 'home' ? DF().gk : 0) - (B.fkShot === 'pen' ? 0.4 : B.fkShot === 'fk' ? 0.2 : 0), 0.1, 0.95);
+      const ch = clamp(0.72 + (p.ref - 70) / 50 - (bs - 24) / 30 - (tir - 70) / 160 + (dd < 1.2 ? 0.15 : 0) + (p.side === 'home' ? DF().gk : 0) - (B.fkShot === 'pen' ? 0.4 : B.fkShot === 'fk' ? 0.2 : 0) + (p.trait === 'gk' ? 0.05 : 0), 0.1, 0.95);
       if (dd > 0.9) { p.dive = 0.7; p.diveDir = (B.y + B.vy * 0.1 > p.y ? 1 : -1) * dirOf(p.side); }
       if (rnd() < ch) {
         const si = p.side === 'home' ? 1 : 0;
-        if (B.kind === 'shot') { banner('🧤 ¡ATAJADA!', '#38bdf8'); sndRoar(0.5); }
+        if (B.kind === 'shot') { banner('🧤 ¡ATAJADA!', '#38bdf8'); sndRoar(0.5); if (rnd() < 0.4) bubble(p, pick(['¡Mía!', '¡Acá estoy!', '¡No pasa!'])); if (B.kicker) react(B.kicker, 'hands_head', rnd() < 0.5 ? pick(MISS_SAY) : null, 1.2); }
         if (B.kind === 'shot') { M.onT[si]++; matchLog(fmt(pick(T.save), { g: short(p.id), a: short(B.kicker.id) }), 'save'); }
         if (bs < 22 || rnd() < 0.45) gain(p);
         else if (rnd() < 0.5) {  // la manda al córner por arriba del travesaño
@@ -515,14 +519,14 @@ function kickoff(side) {
   for (const p of M.all) {
     const k = (PL / 2 - 1.5) / PL;
     p.x = p.side === 'home' ? p.bx * 1.05 * k : PL - p.bx * 1.05 * k; p.y = basePos(p).y;
-    p.vx = p.vy = 0; p.stun = p.cool = p.slide = 0; p.wall = false; p.fx = dirOf(p.side); p.fy = 0;
+    p.vx = p.vy = 0; p.stun = p.cool = p.slide = 0; p.wall = false; p.pose = null; p.fx = dirOf(p.side); p.fy = 0;
   }
   const fw = M.P[side].filter(p => !p.gk).sort((a, b) => b.bx - a.bx), d = dirOf(side);
   fw[0].x = PL / 2 - d * 0.6; fw[0].y = PW / 2;
   fw[1].x = PL / 2 - d * 2; fw[1].y = PW / 2 + 7;
   B.x = PL / 2; B.y = PW / 2; B.vx = B.vy = 0; B.owner = null;
   gain(fw[0]); fw[0].protect = 1.2;
-  M.goalT = 0; M.fk = null;
+  M.goalT = 0; M.fk = null; M.celeb = null; M.bubbles = [];
   if (!humanSide('home')) M.ctrl = null; else if (side === 'home') M.ctrl = fw[0]; else M.ctrl = nearest(M.P.home, B.x, B.y, q => q.gk).p;
   if (M.online) M.ctrl2 = side === 'away' ? fw[0] : nearest(M.P.away, B.x, B.y, q => q.gk).p;
 }
@@ -546,7 +550,9 @@ function goal(si) {
   goalFlash(own ? id : lp.id, si);
   updateHUD();
   B.owner = null; B.vx *= 0.15; B.vy *= 0.15;
-  M.goalT = 2.4; M.kickAfter = other(side);
+  M.goalT = 3.6; M.kickAfter = other(side);
+  M.celeb = own ? null : { p: lp, side };
+  if (!own && lp) bubble(lp, pick(GOAL_SAY), 2.4);
 }
 function checkBounds() {
   const B = M.ball;
@@ -557,11 +563,11 @@ function checkBounds() {
     const post = Math.abs(off - GOAL_HW) < 0.22 && z < 2.44, bar = off < GOAL_HW && Math.abs(z - 2.44) < 0.16;
     if ((post || bar) && Math.abs(B.vx) > 6) {
       B.x = B.x < 0 ? 0.15 : PL - 0.15; B.vx = -B.vx * 0.45; B.vy += (rnd() - 0.5) * 6; if (bar) B.vz = -Math.abs(B.vz || 0) * 0.4 - 1;
-      B.kind = null; matchLog(post ? '😮 ¡La pelota pegó en el palo!' : '😮 ¡Pegó en el travesaño!', 'miss'); banner(post ? '¡PALO!' : '¡TRAVESAÑO!', '#f8fafc'); sndRoar(0.45);
+      react(B.kicker || B.lastP, 'hands_head', '¡Noooo!', 1.4); B.kind = null; matchLog(post ? '😮 ¡La pelota pegó en el palo!' : '😮 ¡Pegó en el travesaño!', 'miss'); banner(post ? '¡PALO!' : '¡TRAVESAÑO!', '#f8fafc'); sndRoar(0.45);
       return;
     }
     if (off < GOAL_HW && z < 2.44) { sndRoar(1); sndWhistle(1); return goal(B.x > PL ? 0 : 1); }
-    if (off < GOAL_HW + 4 && B.kind === 'shot') { matchLog(z >= 2.44 ? '🙈 ¡Se fue por arriba del travesaño!' : '🙈 ¡Se fue afuera, cerca del palo!', 'miss'); sndRoar(0.3); }
+    if (off < GOAL_HW + 4 && B.kind === 'shot') { react(B.kicker, 'hands_head', pick(MISS_SAY), 1.3); matchLog(z >= 2.44 ? '🙈 ¡Se fue por arriba del travesaño!' : '🙈 ¡Se fue afuera, cerca del palo!', 'miss'); sndRoar(0.3); }
     const def = B.x < 0 ? 'home' : 'away', att = other(def);
     if (B.lastSide === def) { setFK(att, B.x < 0 ? 0.6 : PL - 0.6, B.y < PW / 2 ? 0.6 : PW - 0.6, false, true); }
     else { restart(def, B.x < 0 ? 5.5 : PL - 5.5, PW / 2, true); banner('SAQUE DE ARCO', '#e5e7eb'); }
@@ -591,11 +597,35 @@ function arcStep(dt) {
   }
   for (const p of M.all) { p.cool -= dt; p.stun -= dt; p.protect -= dt; if (p.dive > 0) p.dive -= dt; }
   if (M.banner && (M.banner.t -= dt) <= 0) M.banner = null;
+  for (const p of M.all) if (p.pose) { p.pose.t += dt; if (p.pose.dur && p.pose.t > p.pose.dur) p.pose = null; }
+  if (M.bubbles) M.bubbles = M.bubbles.filter(b => (b.t -= dt) > 0);
   M.ticks++; M.possSum += B.owner ? (B.owner.side === 'home' ? 1 : 0) : 0.5;
 
   if (M.goalT > 0) {
     M.goalT -= dt;
-    for (const p of M.all) { const a = basePos(p); moveTo(p, a.x, a.y, speedOf(p) * 0.4, dt); }
+    const C = M.celeb;
+    for (const p of M.all) {
+      if (C && C.p) {
+        if (p === C.p) {                                   // el goleador corre al banderín y festeja a su manera
+          if (!C.spot) {   // corre unos metros hacia el banderín (no más de 8)
+            const fx = C.side === 'home' ? PL - 4 : 4, fy = C.p.y < PW / 2 ? 5 : PW - 5, dd = Math.hypot(fx - p.x, fy - p.y), m = Math.min(1, 8 / (dd || 1));
+            C.spot = { x: p.x + (fx - p.x) * m, y: p.y + (fy - p.y) * m }; C.run = 0;
+          }
+          C.run += dt;
+          if (Math.hypot(C.spot.x - p.x, C.spot.y - p.y) > 1.2 && !p.pose && C.run < 1.3) moveTo(p, C.spot.x, C.spot.y, speedOf(p), dt);
+          else { steer(p, 0, 0, dt); if (!p.pose) p.pose = { type: look(p).cel, t: 0 }; }
+          continue;
+        }
+        if (p.side === C.side && !p.gk) {                  // los compañeros lo van a abrazar
+          const tx = C.p.x - dirOf(p.side) * (1.2 + (p.i % 3) * 0.6), ty = C.p.y + ((p.i % 4) - 1.5) * 0.9;
+          if (Math.hypot(tx - p.x, ty - p.y) > 1.4) moveTo(p, tx, ty, speedOf(p) * 0.85, dt);
+          else { steer(p, 0, 0, dt); if (!p.pose) p.pose = { type: 'arms_up', t: 0 }; }
+          continue;
+        }
+        if (p.side !== C.side && (p.gk || p.i % 3 === 0)) { steer(p, 0, 0, dt); if (!p.pose) p.pose = { type: 'hands_head', t: 0 }; continue; }
+      }
+      const a = basePos(p); moveTo(p, a.x, a.y, speedOf(p) * 0.4, dt);
+    }
     B.x += B.vx * dt; B.y += B.vy * dt; B.vx *= 0.95; B.vy *= 0.95;
     if (M.goalT <= 0) kickoff(M.kickAfter);
     return;
@@ -615,7 +645,7 @@ function arcStep(dt) {
   }
   // presión que pidió el técnico
   if (M.coach && B.owner && B.owner.side === 'away' && M.tac.pr === 0 && B.x > 55) { M.chaser.home = null; M.cover.home = null; }
-  if (!M.coach) userStep(dt);
+  if (!M.coach) { userStep(dt); passCall(dt); }
   for (const p of M.all) {
     if (p === M.ctrl || (M.online && p === M.ctrl2) || p.slide > 0) continue;
     const sf = p.side === 'away' ? M.aiF : 1;
@@ -707,16 +737,82 @@ function shade(hex, f) {
   const n = parseInt(hex.slice(1), 16), k = v => clamp(Math.round(f > 1 ? v + (255 - v) * (f - 1) : v * f), 0, 255);
   return '#' + [n >> 16, (n >> 8) & 255, n & 255].map(v => k(v).toString(16).padStart(2, '0')).join('');
 }
+// Look de cada jugador: sale de su nombre (siempre el mismo), de la época y de algunos ídolos conocidos
+const POSES = ['', 'arms_up', 'airplane', 'hands_head', 'knees', 'point', 'protest', 'siu', 'crossed', 'dance', 'baby', 'heart', 'fist'];
+const CELEBS = ['arms_up', 'airplane', 'knees', 'point', 'fist', 'dance', 'heart', 'arms_up', 'airplane', 'fist'];
+const ICONS = {
+  'Carlos Valderrama': { style: 'afro', hair: '#e8c66a', face: 'mustache' },
+  'Ruud Gullit': { style: 'dreads', face: 'mustache', H: 1.06 },
+  'Edgar Davids': { style: 'dreads', glasses: true },
+  'Carles Puyol': { style: 'curlylong', hair: '#3b2a20' },
+  'Marouane Fellaini': { style: 'afro', H: 1.08 },
+  'Roberto Baggio': { style: 'ponytail', hair: '#2d1d12', face: 'goatee' },
+  'Zinedine Zidane': { style: 'bald', H: 1.04 }, 'Fabien Barthez': { style: 'bald' },
+  'Ronaldo': { style: 'buzz' }, 'Ronaldinho': { style: 'curlylong', band: '#f8fafc', cel: 'dance' },
+  'Sócrates': { style: 'curly', face: 'beard', band: '#f8fafc', H: 1.08, W: 0.9 },
+  'Paul Breitner': { style: 'afro', face: 'beard', hair: '#4a2f1b' },
+  'Andrea Pirlo': { style: 'long', face: 'beard' },
+  'Zlatan Ibrahimović': { style: 'bun', face: 'beard', H: 1.09 },
+  'Gareth Bale': { style: 'bun', face: 'beard', cel: 'heart' },
+  'Paul Pogba': { style: 'buzz', hair: '#f5d26b', cel: 'dance', H: 1.07 },
+  'Mario Balotelli': { style: 'mohawk' }, 'Neymar': { style: 'mohawk', hair: '#a0703a', cel: 'heart' },
+  'Taribo West': { style: 'braids', hair: '#16a34a' },
+  'Alexi Lalas': { style: 'long', hair: '#b4532a', face: 'goatee' },
+  'Rudi Völler': { style: 'curly', face: 'mustache' },
+  'René Higuita': { style: 'curlylong' }, 'Jorge Campos': { gkShirt: '#f472b6', H: 0.93 },
+  'Lev Yashin': { gkShirt: '#111111' }, 'Petr Čech': { helmet: true, H: 1.08 },
+  'Lionel Messi': { face: 'beard', H: 0.94, cel: 'point' }, 'Diego Maradona': { style: 'curly', H: 0.93, cel: 'fist' },
+  'Cristiano Ronaldo': { style: 'short', H: 1.06, cel: 'siu' }, 'Kylian Mbappé': { style: 'buzz', cel: 'crossed' },
+  'Roger Milla': { cel: 'dance' }, 'Bebeto': { cel: 'baby' }, 'Erling Haaland': { style: 'bun', hair: '#e8c66a', H: 1.09, cel: 'knees' },
+  'Sergio Ramos': { face: 'beard' }, 'Johan Cruyff': { style: 'long', W: 0.9 }, 'Mario Kempes': { style: 'long' },
+  'Claudio Caniggia': { style: 'long', hair: '#e8c66a' }, 'Gabriel Batistuta': { style: 'long' },
+  'Peter Schmeichel': { hair: '#e8c66a', H: 1.08 }, 'Thibaut Courtois': { H: 1.1 }, 'Oliver Kahn': { hair: '#d9b26a' },
+  'David Beckham': { hair: '#d9b26a' }, 'Pelé': { style: 'short', cel: 'fist' }, 'Romário': { H: 0.93 },
+  'Lamine Yamal': { style: 'curly', W: 0.88 }, 'Bobby Charlton': { style: 'bald' },
+};
 function look(p) {
   if (!p.look || p.look.id !== p.id) {
-    const h = hash(p.id);
-    p.look = { id: p.id, skin: SKINS[h % SKINS.length], hair: HAIRS[(h >> 4) % HAIRS.length], bald: (h >> 9) % 9 === 0,
-      long: (h >> 13) % 5 === 0, boot: BOOTS[(h >> 17) % BOOTS.length],
-      num: p.gk ? 1 : [2, 3, 4, 5, 6, 8, 7, 10, 11, 9, 14, 15, 16, 17, 18, 19, 20][p.i % 17] };
+    const h = hash(p.id), r = n => (hash(p.id + n) % 1000) / 1000, y = (DB[p.id] && DB[p.id].y) || 2000;
+    // peinado según la época
+    const W8 = [['short', 40], ['buzz', 14], ['long', y >= 1966 && y <= 1994 ? 22 : 6], ['curly', 10], ['afro', y >= 1970 && y <= 1990 ? 8 : 2],
+      ['mohawk', y >= 2002 ? 8 : 0], ['bun', y >= 2014 ? 7 : 0], ['braids', y >= 1994 ? 4 : 0], ['bald', 6], ['ponytail', y >= 1990 ? 3 : 0]];
+    let tot = W8.reduce((a, x) => a + x[1], 0), pick = r('st') * tot, style = 'short';
+    for (const [k, wgt] of W8) { pick -= wgt; if (pick <= 0) { style = k; break; } }
+    const f = r('fc');
+    const face = f < (y < 1995 ? 0.25 : 0.04) ? 'mustache' : f < (y < 1995 ? 0.32 : 0.04) + (y >= 2006 ? 0.3 : 0.08) ? 'beard' : f > 0.95 ? 'goatee' : 'none';
+    const L = {
+      id: p.id, skin: SKINS[h % SKINS.length], hair: HAIRS[(h >> 4) % HAIRS.length], style, face,
+      boot: BOOTS[(h >> 17) % BOOTS.length], band: r('bd') < 0.06 ? ['#f8fafc', '#111827', '#ef4444'][(h >> 3) % 3] : null,
+      H: 0.93 + r('h') * 0.13 + (p.gk || p.slot === 'DFC' ? 0.04 : 0), W: 0.9 + r('w') * 0.22,
+      cel: CELEBS[(h >> 7) % CELEBS.length], sleeves: r('sl') < 0.25,
+      num: p.gk ? 1 : [2, 3, 4, 5, 6, 8, 7, 10, 11, 9, 14, 15, 16, 17, 18, 19, 20][p.i % 17],
+    };
+    Object.assign(L, ICONS[p.id] || {});
+    p.look = L;
   }
   return p.look;
 }
-// Tribuna pre-dibujada (dos versiones: quietos y festejando)
+// Globitos de diálogo arriba de los jugadores
+function bubble(p, text, t = 1.8) {
+  if (!M || !p) return;
+  M.bubbles = (M.bubbles || []).filter(b => b.p !== p);
+  if (M.bubbles.length >= 3) M.bubbles.shift();
+  M.bubbles.push({ p, text, t });
+}
+function react(p, type, text, dur = 1.3) { if (!p) return; p.pose = { type, t: 0, dur }; if (text) bubble(p, text); }
+const MISS_SAY = ['¡Nooo!', '¡Uffff!', '¡Casi!', '¡Por poquito!'];
+const PROTEST_SAY = ['¡No la toqué!', '¡Fue pelota!', '¿Qué cobrás?', '¡Si ni lo toqué!'];
+const GOAL_SAY = ['¡GOOOL!', '¡VAMOOOS!', '¡Tomá!', '¡Para vos, mamá!', '¡Golazo!'];
+const CALL_SAY = ['¡Pasala!', '¡Acá, acá!', '¡Estoy solo!', '¡Tocá!'];
+// Un compañero libre pide la pelota cuando la tenés vos
+function passCall(dt) {
+  M.callT = (M.callT || 3) - dt; if (M.callT > 0) return;
+  M.callT = 3.5 + rnd() * 3;
+  const c = M.ctrl, B = M.ball; if (!c || B.owner !== c) return;
+  const d = dirOf('home'), mates = M.P.home.filter(q => q !== c && !q.gk && (q.x - c.x) * d > 4 && dist(q, c) < 30 && nearest(M.P.away, q.x, q.y).d > 6);
+  if (mates.length) bubble(pick(mates), pick(CALL_SAY), 1.4);
+}
+
 function mkCrowd(W, H, cols) {
   const out = [];
   for (const up of [false, true]) {
@@ -765,7 +861,7 @@ function arcDraw() {
   const VIEW = w < 520 ? 32 : 40, CD = 60, CH = 32, f = w / VIEW * CD;
   const tgt = clamp(B.x + B.vx * 0.25, VIEW / 2 - 9, PL - VIEW / 2 + 9);
   M.cam = M.cam == null ? tgt : M.cam + (tgt - M.cam) * 0.07;
-  const shake = M.goalT > 1.6 ? Math.sin(T * 60) * 2 : 0;
+  const shake = M.goalT > 2.8 ? Math.sin(T * 60) * 2 : 0;
   const horizon = h - h * 0.035 - CH * f / CD + shake;
   const K = y => f / (CD + PW - y);                       // escala según la profundidad
   const SX = (x, y) => w / 2 + (x - M.cam) * K(y), SY = (y, z = 0) => horizon + (CH - z) * K(y);
@@ -847,7 +943,7 @@ function arcDraw() {
   path([P(-45, -5.5), P(PL + 45, -5.5), P(PL + 45, PW + 30), P(-45, PW + 30)], true); c.fillStyle = lg; c.fill();
 
   // --- Arcos: la red y el palo de atrás antes que los jugadores, el palo de adelante después ---
-  const bulge = gx => (M.goalT > 0 && Math.abs(B.x - gx) < 5) ? Math.max(0, Math.sin((2.4 - M.goalT) * 9)) * 0.9 * (M.goalT / 2.4) : 0;
+  const bulge = gx => (M.goalT > 0 && Math.abs(B.x - gx) < 5) ? Math.max(0, Math.sin((3.6 - M.goalT) * 9)) * 0.9 * (M.goalT / 3.6) : 0;
   const drawGoal = (gx, d, front) => {
     const y0 = PW / 2 - GOAL_HW, y1 = PW / 2 + GOAL_HW, bz = bulge(gx), bx = gx - d * (2.2 + bz), H = 2.44;
     const pw = Math.max(2, K(front ? y1 : y0) * 0.13);
@@ -925,7 +1021,7 @@ function arcDraw() {
   const fs = Math.max(10, Math.round(w / 75));
   c.font = `800 ${fs}px Inter, sans-serif`; c.textAlign = 'center'; c.textBaseline = 'middle';
   const label = (p, color) => {
-    const k = K(p.y) * 1.4, x = clamp(SX(p.x, p.y), 50, w - 50), y = SY(p.y) - 2.05 * k - fs * 0.9, t = short(p.id), tw = c.measureText(t).width + 16;
+    const k = K(p.y) * 1.4, x = clamp(SX(p.x, p.y), 50, w - 50), y = SY(p.y) - 2.05 * k * look(p).H - fs * 0.9, t = short(p.id) + (p.trait ? ' ' + TRAITS[p.trait][0] : ''), tw = c.measureText(t).width + 16;
     c.fillStyle = 'rgba(10,14,25,.78)'; c.beginPath(); c.roundRect(x - tw / 2, y - fs * 0.75, tw, fs * 1.5, fs * 0.75); c.fill();
     c.fillStyle = M[p.side].col; c.beginPath(); c.arc(x - tw / 2 + fs * 0.55, y, fs * 0.28, 0, 7); c.fill();
     c.fillStyle = color; c.fillText(t, x + fs * 0.2, y + 1);
@@ -962,6 +1058,19 @@ function arcDraw() {
     c.fillStyle = '#e5e7eb'; c.font = `600 ${Math.max(9, Math.round(fs * 0.85))}px Inter, sans-serif`;
     c.fillText(t2, w / 2, by + fs * 2.5);
   }
+  // globitos de diálogo
+  if (M.bubbles && M.bubbles.length) {
+    const bf = Math.max(10, Math.round(w / 85));
+    c.font = `800 ${bf}px Inter, sans-serif`; c.textAlign = 'center'; c.textBaseline = 'middle';
+    for (const b of M.bubbles) {
+      const p = b.p, k = K(p.y) * 1.4, bx = SX(p.x, p.y); if (bx < -30 || bx > w + 30) continue;
+      const by = SY(p.y) - 2.1 * k * look(p).H - bf * 2.6 - ((p === M.ctrl || p === M.ctrl2) ? bf * 1.6 : 0), tw = c.measureText(b.text).width + bf * 1.2;
+      c.globalAlpha = Math.min(1, b.t * 3);
+      c.fillStyle = '#f8fafc'; c.beginPath(); c.roundRect(bx - tw / 2, by - bf * 0.85, tw, bf * 1.7, bf * 0.8); c.fill();
+      c.beginPath(); c.moveTo(bx - 4, by + bf * 0.8); c.lineTo(bx + 4, by + bf * 0.8); c.lineTo(bx, by + bf * 0.8 + 7); c.fill();
+      c.fillStyle = '#0f172a'; c.fillText(b.text, bx, by + 1); c.globalAlpha = 1;
+    }
+  }
   drawRadar(c, w, h);
 
   function drawBall() {
@@ -992,9 +1101,10 @@ function arcDraw() {
   }
   function drawPlayer(p, x, y, k) {
     const L = look(p), col = M[p.side].col;
-    const shirt = p.gk ? (p.side === 'home' ? '#111827' : '#a3e635') : col;
+    const shirt = p.gk ? (L.gkShirt || (p.side === 'home' ? '#111827' : '#a3e635')) : col;
     const shorts = p.gk ? '#111827' : (lum(col) > 0.75 ? '#1f2937' : (lum(col) < 0.2 ? '#f8fafc' : shade(col, 0.55)));
     const socks = p.gk ? '#111827' : shirt, trim = lum(shirt) > 0.6 ? '#111827' : '#f8fafc', OUT = 'rgba(0,0,0,.55)';
+    const pose = p.pose && p.pose.type;
     // paso al correr
     const mv = p.lx == null ? 0 : Math.hypot(p.x - p.lx, p.y - p.ly); p.lx = p.x; p.ly = p.y;
     p.ph = (p.ph || 0) + mv * 1.9;
@@ -1017,16 +1127,29 @@ function arcDraw() {
     } else if (p.dive > 0) {                               // el arquero se tira
       const yy = y - k * 0.4; c.translate(x, yy); c.rotate((p.diveDir || 1) * 1.25 * Math.min(1, (0.7 - p.dive) * 6 + 0.2)); c.translate(-x, -yy);
     } else if (p.stun > 0) { c.translate(x, y); c.rotate(face * -0.35); c.translate(-x, -y); }   // trastabilla después de un quite
+    // festejos que mueven todo el cuerpo
+    const pt = p.pose ? p.pose.t : 0;
+    if (pose === 'siu' && pt < 0.6) c.translate(0, -Math.sin(pt / 0.6 * Math.PI) * k * 0.7);
+    if (pose === 'dance') { c.translate(x, y); c.rotate(Math.sin(T * 9) * 0.18); c.translate(-x, -y); }
+    if (pose === 'baby') { c.translate(x, y); c.rotate(Math.sin(T * 6) * 0.08); c.translate(-x, -y); }
+    const kneel = pose === 'knees';
+    if (kneel) c.translate(0, k * 0.42);
+    // altura y contextura de cada uno
+    c.translate(x, y); c.scale(L.W, L.H); c.translate(-x, -y);
     c.translate(0, -bob);
     const hip = y - k * 0.9, shY = y - k * 1.5, lw = Math.max(1.6, k * 0.17);
     c.lineCap = 'round';
     const limb = (pts, color, wd) => { c.strokeStyle = OUT; c.lineWidth = wd + 1.4; line(pts); c.strokeStyle = color; c.lineWidth = wd; line(pts); };
-    // piernas (la de atrás un poco más oscura)
-    for (const s of [1, -1]) {
-      const a = sw * s, fx = x + Math.sin(a) * k * 0.55 * face + s * k * 0.06, fy = y + bob - Math.max(0, Math.sin(a)) * k * 0.12;
-      const kx = x + s * k * 0.08 + Math.sin(a) * k * 0.32 * face, ky = hip + k * 0.45;
-      const dk = s > 0 ? 0.8 : 1;
-      limb([[x + s * k * 0.1, hip + k * 0.15], [kx, ky]], shade(L.skin, dk), lw);
+    if (kneel) {                                           // de rodillas en el pasto
+      for (const s2 of [1, -1]) {
+        limb([[x + s2 * k * 0.1, hip + k * 0.15], [x + s2 * k * 0.12 + face * k * 0.15, y - k * 0.42]], L.skin, lw);
+        limb([[x + s2 * k * 0.12 + face * k * 0.15, y - k * 0.42], [x + s2 * k * 0.1 - face * k * 0.3, y - k * 0.4]], socks, lw);
+      }
+    } else for (const s2 of [1, -1]) {                     // piernas (la de atrás un poco más oscura)
+      const a2 = pose ? 0 : sw * s2, fx = x + Math.sin(a2) * k * 0.55 * face + s2 * k * 0.06, fy = y + bob - Math.max(0, Math.sin(a2)) * k * 0.12;
+      const kx = x + s2 * k * 0.08 + Math.sin(a2) * k * 0.32 * face, ky = hip + k * 0.45;
+      const dk = s2 > 0 ? 0.8 : 1;
+      limb([[x + s2 * k * 0.1, hip + k * 0.15], [kx, ky]], shade(L.skin, dk), lw);
       limb([[kx, ky], [fx, fy - k * 0.05]], shade(socks, dk), lw);
       c.strokeStyle = trim; c.lineWidth = lw * 0.9; line([[kx + (fx - kx) * 0.15, ky + (fy - ky) * 0.15], [kx + (fx - kx) * 0.25, ky + (fy - ky) * 0.25]]);
       limb([[fx, fy - k * 0.03], [fx + face * k * 0.13, fy - k * 0.02]], L.boot, lw * 1.05);
@@ -1034,11 +1157,42 @@ function arcDraw() {
     // short
     c.fillStyle = shorts; c.strokeStyle = OUT; c.lineWidth = 1;
     c.beginPath(); c.roundRect(x - k * 0.24, hip - k * 0.05, k * 0.48, k * 0.3, k * 0.06); c.fill(); c.stroke();
-    // brazo de atrás
-    const arm = s => {
-      const a = -sw * s * 1.2, ex = x + s * k * 0.3 + Math.sin(a) * k * 0.12 * face, ey = shY + k * 0.28;
-      limb([[x + s * k * 0.22, shY + k * 0.06], [ex, ey]], s * face < 0 ? shade(shirt, 0.8) : shirt, lw * 1.05);
-      limb([[ex, ey], [ex + Math.sin(a) * k * 0.2 * face + s * k * 0.02, shY + k * 0.55]], p.gk ? '#f8fafc' : L.skin, lw * 0.9);
+    const hr = k * 0.17, hy = shY - k * 0.19;
+    // brazos: normales o en pose de festejo / reacción
+    const armPts = s2 => {
+      const sx = x + s2 * k * 0.22, sy = shY + k * 0.06, F = s2 === face, wv = Math.sin(T * 10) * k * 0.08;
+      switch (pose) {
+        case 'arms_up': case 'knees': return [[x + s2 * k * 0.36, shY - k * 0.2], [x + s2 * k * 0.42 + (s2 > 0 ? wv : -wv), shY - k * 0.6]];
+        case 'airplane': return [[x + s2 * k * 0.5, sy + k * 0.02], [x + s2 * k * 0.8, sy + k * 0.08]];
+        case 'hands_head': return [[x + s2 * k * 0.4, shY - k * 0.12], [x + s2 * k * 0.14, hy - hr * 0.7]];
+        case 'point': return F ? [[x + s2 * k * 0.3, shY - k * 0.25], [x + s2 * k * 0.2, shY - k * 0.75]] : null;
+        case 'fist': return F ? [[x + s2 * k * 0.42, shY - k * 0.05], [x + s2 * k * 0.38, shY - k * 0.45]] : null;
+        case 'siu': return pt < 0.6 ? [[x + s2 * k * 0.3, shY - k * 0.2], [x + s2 * k * 0.3, shY - k * 0.55]] : [[x + s2 * k * 0.45, sy + k * 0.22], [x + s2 * k * 0.62, sy + k * 0.5]];
+        case 'crossed': return [[x + s2 * k * 0.28, sy + k * 0.3], [x - s2 * k * 0.14, sy + k * 0.22]];
+        case 'dance': return [[x + s2 * k * 0.4, sy - k * 0.05 + Math.sin(T * 9 + s2) * k * 0.15], [x + s2 * k * 0.55, sy - k * 0.35 + Math.sin(T * 9 + s2) * k * 0.2]];
+        case 'baby': return [[x + face * k * 0.12 + s2 * k * 0.15, sy + k * 0.3], [x + face * k * 0.32, sy + k * 0.32 + Math.sin(T * 6) * k * 0.06]];
+        case 'heart': return [[x + s2 * k * 0.3, sy + k * 0.05], [x + face * k * 0.12 + s2 * k * 0.04, sy + k * 0.12]];
+        case 'protest': return [[x + s2 * k * 0.42, sy + k * 0.15], [x + s2 * k * 0.7, sy + k * 0.05]];
+        default: return null;
+      }
+    };
+    const arm = s2 => {
+      const custom = armPts(s2), sx = x + s2 * k * 0.22, sy = shY + k * 0.06, sleeve = s2 * face < 0 ? shade(shirt, 0.8) : shirt;
+      const hand = p.gk ? '#f8fafc' : L.skin;
+      if (custom) {
+        const [el, hd] = custom, mid = [sx + (el[0] - sx) * 0.55, sy + (el[1] - sy) * 0.55];
+        limb([[sx, sy], L.sleeves || p.gk ? el : mid], sleeve, lw * 1.05);
+        limb([L.sleeves || p.gk ? el : mid, el, hd], hand, lw * 0.9);
+        if (p.gk) { c.fillStyle = '#f8fafc'; c.beginPath(); c.arc(hd[0], hd[1], lw * 0.8, 0, 7); c.fill(); }
+        return;
+      }
+      const a2 = -sw * s2 * 1.2, ex = x + s2 * k * 0.3 + Math.sin(a2) * k * 0.12 * face, ey = shY + k * 0.28;
+      const hx = ex + Math.sin(a2) * k * 0.2 * face + s2 * k * 0.02, hy2 = shY + k * 0.55;
+      limb([[sx, sy], [ex, ey]], sleeve, lw * 1.05);
+      if (L.sleeves || p.gk) limb([[ex, ey], [hx, hy2]], sleeve, lw * 0.95);
+      else limb([[ex, ey], [hx, hy2]], hand, lw * 0.9);
+      if (p.gk) { c.fillStyle = '#f8fafc'; c.beginPath(); c.arc(hx, hy2, lw * 0.75, 0, 7); c.fill(); }   // guantes
+      else if (L.sleeves) { c.fillStyle = L.skin; c.beginPath(); c.arc(hx, hy2, lw * 0.45, 0, 7); c.fill(); }
     };
     arm(-face);
     // camiseta con luz y sombra
@@ -1054,17 +1208,42 @@ function arcDraw() {
       c.fillText(L.num, x, shY + k * 0.33);
     }
     arm(face);
-    // cuello, cabeza y pelo
-    const hr = k * 0.17, hy = shY - k * 0.19;
+    // cuello y cabeza
+    const hcol = L.hair, back = x - face * hr * 0.15;
+    if (L.style === 'afro') { c.fillStyle = hcol; c.beginPath(); c.arc(back, hy - hr * 0.3, hr * 1.6, 0, 7); c.fill(); }
+    if (L.style === 'curlylong' || L.style === 'long') { c.fillStyle = hcol; c.beginPath(); c.roundRect(x - face * hr * 1.15 - (face < 0 ? hr * 0.6 : 0), hy - hr * 0.3, hr * 0.62, hr * (L.style === 'long' ? 1.5 : 1.3), hr * 0.25); c.fill(); }
     c.fillStyle = shade(L.skin, 0.85); c.fillRect(x - k * 0.06, shY - k * 0.08, k * 0.12, k * 0.1);
     const hg = c.createRadialGradient(x - hr * 0.4, hy - hr * 0.4, hr * 0.1, x, hy, hr);
     hg.addColorStop(0, shade(L.skin, 1.15)); hg.addColorStop(1, shade(L.skin, 0.85));
     c.fillStyle = hg; c.beginPath(); c.arc(x, hy, hr, 0, 7); c.fill(); c.strokeStyle = OUT; c.lineWidth = 0.8; c.stroke();
     c.fillStyle = shade(L.skin, 0.9); c.beginPath(); c.arc(x + face * hr * 0.92, hy + hr * 0.1, hr * 0.2, 0, 7); c.fill(); // nariz
-    if (!L.bald) {
-      c.fillStyle = L.hair; c.beginPath(); c.arc(x - face * hr * 0.1, hy - hr * 0.15, hr * 1.06, Math.PI * 1.0, Math.PI * 2.0); c.fill();
-      if (L.long) { c.fillRect(x - face * hr * 1.1 - (face < 0 ? hr * 0.5 : 0), hy - hr * 0.2, hr * 0.55, hr * 1.2); }
+    if (k > 11) { c.fillStyle = '#1b1b1b'; c.beginPath(); c.arc(x + face * hr * 0.5, hy - hr * 0.12, Math.max(0.7, hr * 0.11), 0, 7); c.fill(); } // ojo
+    // barba / bigote
+    c.fillStyle = hcol;
+    if (L.face === 'beard') { c.globalAlpha = 0.85; c.beginPath(); c.arc(x + face * hr * 0.12, hy + hr * 0.05, hr * 0.98, Math.PI * 0.05, Math.PI * 0.95); c.fill(); c.globalAlpha = 1; }
+    else if (L.face === 'mustache') c.fillRect(x + face * hr * 0.5 - hr * 0.28, hy + hr * 0.32, hr * 0.56, hr * 0.14);
+    else if (L.face === 'goatee') { c.beginPath(); c.arc(x + face * hr * 0.35, hy + hr * 0.82, hr * 0.22, 0, 7); c.fill(); }
+    // pelo
+    const cap = (rr = 1.06, dy = 0.15) => { c.beginPath(); c.arc(x - face * hr * 0.1, hy - hr * dy, hr * rr, Math.PI, Math.PI * 2); c.fill(); };
+    c.fillStyle = hcol;
+    switch (L.style) {
+      case 'bald': c.fillStyle = 'rgba(255,255,255,.25)'; c.beginPath(); c.arc(x - hr * 0.3, hy - hr * 0.55, hr * 0.22, 0, 7); c.fill(); break;
+      case 'buzz': c.globalAlpha = 0.75; cap(1.0, 0.1); c.globalAlpha = 1; break;
+      case 'afro': cap(1.12, 0.2); break;
+      case 'mohawk': c.globalAlpha = 0.55; cap(1.0, 0.1); c.globalAlpha = 1; c.beginPath(); c.roundRect(x - hr * 0.2, hy - hr * 1.5, hr * 0.4, hr * 0.75, hr * 0.15); c.fill(); break;
+      case 'curly': case 'curlylong': cap(1.06, 0.15); for (let i = 0; i < 5; i++) { c.beginPath(); c.arc(x - face * hr * 0.1 + (i - 2) * hr * 0.42, hy - hr * 0.95 + Math.abs(i - 2) * hr * 0.18, hr * 0.32, 0, 7); c.fill(); } break;
+      case 'bun': cap(1.04, 0.15); c.beginPath(); c.arc(x - face * hr * 0.55, hy - hr * 1.1, hr * 0.38, 0, 7); c.fill(); break;
+      case 'ponytail': cap(1.04, 0.15); c.beginPath(); c.roundRect(x - face * hr * 1.05 - (face < 0 ? hr * 0.3 : 0), hy - hr * 0.6, hr * 0.3, hr * 1.1, hr * 0.15); c.fill(); break;
+      case 'braids': case 'dreads': cap(1.08, 0.15); c.strokeStyle = hcol; c.lineWidth = Math.max(1, hr * (L.style === 'dreads' ? 0.3 : 0.2));
+        for (let i = 0; i < 4; i++) line([[x - face * hr * (0.2 + i * 0.25), hy - hr * 0.5], [x - face * hr * (0.45 + i * 0.25), hy + hr * (L.style === 'dreads' ? 1.4 : 1.0)]]); break;
+      default: cap(1.06, 0.15);
     }
+    if (L.band) { c.fillStyle = L.band; c.fillRect(x - hr * 1.02, hy - hr * 0.55, hr * 2.04, hr * 0.26); }
+    if (L.helmet) {   // casco protector (como el de Čech)
+      c.fillStyle = '#111827'; c.beginPath(); c.arc(x, hy - hr * 0.05, hr * 1.12, Math.PI * 0.95, Math.PI * 2.05); c.fill();
+      c.strokeStyle = '#111827'; c.lineWidth = Math.max(1, hr * 0.18); line([[x - face * hr * 0.6, hy], [x + face * hr * 0.4, hy + hr * 0.9]]);
+    }
+    if (L.glasses) { c.strokeStyle = '#f97316'; c.lineWidth = Math.max(1, hr * 0.18); line([[x - face * hr * 0.2, hy - hr * 0.15], [x + face * hr * 0.95, hy - hr * 0.15]]); }
     c.restore();
   }
 }
