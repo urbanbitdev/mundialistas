@@ -108,12 +108,13 @@ async function cloudEnter(user) {
     if (!save && legacy) {
       return askYes(`En esta compu hay un equipo guardado (${legacy.name}). ¿Lo pasamos a tu cuenta?`, () => {
         save = legacy; try { localStorage.removeItem(SAVE_KEY); } catch (e) { }
-        persist(); renderMenu();
-      }, 'Sí, usar ese equipo', 'No, empezar uno nuevo');
+        persist(); renderMenu(); if (typeof amiStart === 'function') amiStart();
+      }, 'Sí, usar ese equipo', 'No, empezar uno nuevo', () => { renderNewGame(); if (typeof amiStart === 'function') amiStart(); });
     }
     if (save) persist();
   }
   save ? renderMenu() : renderNewGame();
+  if (typeof amiStart === 'function') amiStart();
 }
 
 // Guardar en internet: espera un ratito para juntar cambios seguidos
@@ -141,6 +142,7 @@ async function cloudLogout() {
   try { await CLOUD.sb.auth.signOut(); } catch (e) { }
   CLOUD.user = null; CLOUD.name = ''; save = null;
   if (typeof leaveOnline === 'function') leaveOnline();
+  if (typeof amiStop === 'function') amiStop();
   try { await CLOUD.sb.removeAllChannels(); } catch (e) { }
   window.__supaRoom = null;
   renderLogin();

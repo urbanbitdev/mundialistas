@@ -14,10 +14,10 @@ function lum(hex) { const n = parseInt(hex.slice(1), 16); const r = n >> 16, g =
 function colDist(a, b) { const x = parseInt(a.slice(1), 16), y = parseInt(b.slice(1), 16); return Math.hypot((x >> 16) - (y >> 16), ((x >> 8) & 255) - ((y >> 8) & 255), (x & 255) - (y & 255)); }
 function toast(msg) { const t = document.createElement('div'); t.className = 'toast'; t.textContent = msg; document.body.appendChild(t); setTimeout(() => t.classList.add('out'), 1800); setTimeout(() => t.remove(), 2300); }
 // Pregunta "¿Seguro?" dentro del juego (las ventanitas del navegador no andan en el link compartido)
-function askYes(msg, onYes, yes = 'Sí', no = 'Cancelar') {
+function askYes(msg, onYes, yes = 'Sí', no = 'Cancelar', onNo = null) {
   const o = document.createElement('div'); o.className = 'ask';
   o.innerHTML = `<div class="ask-box panel"><p>${esc(msg)}</p><div class="ask-btns"><button class="chipbtn" data-a="no">${esc(no)}</button><button class="big slim" data-a="yes">${esc(yes)}</button></div></div>`;
-  o.onclick = e => { const b = e.target.closest('[data-a]'); if (!b && e.target !== o) return; o.remove(); if (b && b.dataset.a === 'yes') onYes(); };
+  o.onclick = e => { const b = e.target.closest('[data-a]'); if (!b && e.target !== o) return; o.remove(); if (b && b.dataset.a === 'yes') onYes(); else if (onNo) onNo(); };
   document.body.appendChild(o); o.querySelector('[data-a=yes]').focus();
 }
 function fmt(s, o) { return s.replace(/\{(\w)\}/g, (_, k) => `<b>${esc(o[k] || '')}</b>`); }

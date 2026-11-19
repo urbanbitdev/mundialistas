@@ -60,6 +60,7 @@ async function renderFriends() {
 }
 function paintLobby() {
   if (!NET || NET.role || !$('#fr')) return;
+  if (typeof amiOn === 'function' && amiOn()) return paintFriendsList();   // versión web: lista de amigos
   const keep = $('#fr-code') ? $('#fr-code').value : '', hadFocus = document.activeElement && document.activeElement.id === 'fr-code';
   const salas = NET.room.peers().filter(p => !p.isMe && p.presence && /^\d{4}$/.test(String(p.presence.sala || '')));
   $('#fr').innerHTML = `
@@ -90,16 +91,16 @@ function netErr(e) {
 }
 
 /* ----- Crear sala (el que crea hace correr el partido) ----- */
-async function createSala() {
+async function createSala(opts = {}) {
   if (!NET || NET.role) return;
   const code = String(1000 + Math.floor(rnd() * 9000));
   NET.role = 'host'; NET.code = code;
   paintWait('<p>Creando la sala…</p>', false);
   try { NET.g = await NET.room.join(ROOM_PREFIX + code); } catch (e) { NET.role = null; toast('No se pudo crear la sala. Probá de nuevo.'); return paintLobby(); }
   if (!NET) return;
-  NET.room.presence({ sala: code, club: NET.me.n, col: NET.me.c }).catch(() => {});
+  if (!opts.invite) NET.room.presence({ sala: code, club: NET.me.n, col: NET.me.c }).catch(() => {});
   NET.g.presence({ role: 'host', team: NET.me, len: save.arcLen || 3 }).catch(() => {});
-  paintWait(`<div class="fr-big">${code}</div><h3>¡Sala creada! Esperando a tu amigo…</h3>
+  if (!opts.invite) paintWait(`<div class="fr-big">${code}</div><h3>¡Sala creada! Esperando a tu amigo…</h3>
     <p class="mut">Decile que abra el juego, toque <b>👥 Jugar con amigos</b> y entre a tu sala. El partido arranca solo cuando entra.</p>`);
   NET.unsubs.push(NET.g.onPeers(ch => hostPeers(ch), e => netErr(e)));
 }
@@ -116,6 +117,7 @@ function hostPeers(ch) {
 }
 function hostStart(gst) {
   if (NET.started) return;
+  if (typeof AMI !== 'undefined') { AMI.pending = null; clearTimeout(AMI.waitT); }
   NET.started = true; NET.opp = gst.peer;
   NET.g.presence({ vs: gst.peer }).catch(() => {});
   NET.room.presence({ sala: null, club: null, col: null }).catch(() => {});
