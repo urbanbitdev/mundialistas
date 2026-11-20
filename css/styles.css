@@ -299,7 +299,7 @@ h1, h2, h3, h4 { font-family: Oswald, sans-serif; letter-spacing: .02em; margin:
 .dr-more { grid-column: 1 / -1; margin: 0; }
 
 /* ===== Elegir formación ===== */
-.fp-list { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; margin: 12px 0 16px; }
+.fp-list { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; margin: 12px 0 16px; }
 .fp-card { display: flex; flex-direction: column; gap: 4px; padding: 12px; border-radius: 14px; background: var(--panel); border: 2px solid var(--line); text-align: left; min-width: 0; }
 .fp-card b { font: 700 24px Oswald, sans-serif; color: var(--text); }
 .fp-card span { font-weight: 800; color: var(--acc2); font-size: 13px; }

@@ -46,6 +46,8 @@ const FORMATIONS = {
   '4-2-4': [['POR', 6, 50], ['LD', 26, 84], ['DFC', 22, 62], ['DFC', 22, 38], ['LI', 26, 16], ['MC', 46, 62], ['MC', 46, 38], ['ED', 76, 86], ['DC', 80, 62], ['DC', 80, 38], ['EI', 76, 14]],
   '3-5-2': [['POR', 6, 50], ['DFC', 22, 74], ['DFC', 20, 50], ['DFC', 22, 26], ['MD', 52, 88], ['MC', 46, 64], ['MCO', 60, 50], ['MC', 46, 36], ['MI', 52, 12], ['DC', 80, 60], ['DC', 80, 40]],
   '5-3-2': [['POR', 6, 50], ['LD', 32, 88], ['DFC', 22, 70], ['DFC', 20, 50], ['DFC', 22, 30], ['LI', 32, 12], ['MC', 50, 70], ['MCD', 44, 50], ['MC', 50, 30], ['DC', 78, 60], ['DC', 78, 40]],
+  // 4 defensas, 1 volante y 5 delanteros: dos extremos y tres puntas
+  '4-1-5': [['POR', 6, 50], ['LD', 24, 84], ['DFC', 20, 62], ['DFC', 20, 38], ['LI', 24, 16], ['MCD', 46, 50], ['ED', 74, 88], ['DC', 80, 68], ['DC', 84, 50], ['DC', 80, 32], ['EI', 74, 12]],
 };
 
 /* ================= Base de datos ================= */
@@ -289,6 +291,7 @@ const PICK_FORMS = [
   ['4-2-3-1', 'Con enganche', 'Un 10 detrás del 9 y dos volantes que cuidan.'],
   ['3-5-2', 'Medio lleno', 'Tres defensores y cinco en el medio para tener la pelota.'],
   ['5-3-2', 'Bien cerrado', 'Cinco atrás: difícil que te hagan goles.'],
+  ['4-1-5', 'Todos al ataque', 'Cinco delanteros y un solo volante: muchos goles, pero cuidado atrás.'],
 ];
 function renderFormationPick(first = false) {
   let f = PICK_FORMS.some(x => x[0] === save.formation) ? save.formation : '4-4-2';
